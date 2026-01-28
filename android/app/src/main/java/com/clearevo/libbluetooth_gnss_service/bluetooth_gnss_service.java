@@ -244,6 +244,23 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                 // USB connection - just start foreground, actual USB connect happens via startUsbConnection()
                 log(TAG, "USB connection requested, starting foreground service only");
                 start_foreground("Waiting for USB...", "device: " + m_bdaddr.substring(4), "");
+
+                // Set NTRIP params for USB connections (same logic as Bluetooth)
+                m_all_ntrip_params_specified = true;
+                try {
+                    for (String key : NTRIP_CONNECT_ARGS) {
+                        Object val = m_start_connect_args.get(key);
+                        if (val == null || (val instanceof String && ((String)val).isEmpty())) {
+                            log(TAG, "USB: key: " + key + " got null or empty string so m_all_ntrip_params_specified false");
+                            m_all_ntrip_params_specified = false;
+                            break;
+                        }
+                    }
+                } catch (Exception e) {
+                    log(TAG, "USB: WARNING: check m_all_ntrip_params_specified exception: " + Log.getStackTraceString(e));
+                    m_all_ntrip_params_specified = false;
+                }
+                log(TAG, "USB: m_all_ntrip_params_specified: " + m_all_ntrip_params_specified);
             } else {
                 log(TAG, "onStartCommand got bdaddr");
                 int start_ret = connect(connectArgs, m_bdaddr, m_secure_rfcomm, getApplicationContext());
@@ -434,6 +451,21 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
         // Start readline thread for NMEA data
         if (g_usb_mgr != null) {
             g_usb_mgr.startReadlineThread();
+        }
+
+        // Send UBX commands to enable PUBX accuracy data (same as Bluetooth)
+        if (m_ubx_mode && m_ubx_send_enable_extra_used_packets && g_usb_mgr != null) {
+            new Thread() {
+                public void run() {
+                    try {
+                        g_usb_mgr.add_send_buffer(fromHexString("B5 62 06 01 03 00 F1 00 01 FC 13"));  //enable pubx config data - for pubx accuracies
+                        g_usb_mgr.add_send_buffer(fromHexString("B5 62 0A 04 00 00 0E 34"));  //poll ubx-mon-ver for hardware/firmware info of the receiver
+                        g_usb_mgr.add_send_buffer(fromHexString("B5 62 0A 28 00 00 32 A0"));  //poll ubx-mon-gnss default system-settings
+                    } catch (Exception e) {
+                        log(TAG, "USB m_ubx_send_enable_extra_used_packets exception: " + getStackTraceString(e));
+                    }
+                }
+            }.start();
         }
     }
 
@@ -691,8 +723,28 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
         try {
             //log(TAG, "ntrip on_read: "+read_buff.toString());
             m_ntrip_cb_count += 1;
-            g_rfcomm_mgr.add_send_buffer(read_buff);
-            m_ntrip_cb_count_added_to_send_buffer += 1;
+            boolean sent = false;
+            // Send to Bluetooth if connected
+            if (g_rfcomm_mgr != null && g_rfcomm_mgr.is_bt_connected()) {
+                g_rfcomm_mgr.add_send_buffer(read_buff);
+                m_ntrip_cb_count_added_to_send_buffer += 1;
+                sent = true;
+            }
+            // Also send to USB if connected
+            if (g_usb_mgr != null && g_usb_mgr.isConnected()) {
+                g_usb_mgr.add_send_buffer(read_buff);
+                m_ntrip_cb_count_added_to_send_buffer += 1;
+                sent = true;
+                // Log every 10th packet to confirm data is flowing to USB
+                if (m_ntrip_cb_count % 10 == 0) {
+                    log(TAG, "NTRIP->USB: sent " + read_buff.length + " bytes, total packets: " + m_ntrip_cb_count);
+                }
+            }
+            if (!sent && m_ntrip_cb_count % 50 == 0) {
+                log(TAG, "NTRIP data received but no connection to forward to! BT:" +
+                    (g_rfcomm_mgr != null ? g_rfcomm_mgr.is_bt_connected() : "null") +
+                    " USB:" + (g_usb_mgr != null ? g_usb_mgr.isConnected() : "null"));
+            }
         } catch (Exception e) {
             log(TAG, "ntrip callback on_readline exception: " + getStackTraceString(e));
         }

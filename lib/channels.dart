@@ -210,12 +210,15 @@ Future<bool> isUsbHostSupported() async {
 
 /// Connect to a USB GNSS device by its device ID.
 /// Returns true if connection was initiated successfully.
-Future<bool> connectUsb(int deviceId) async {
+/// Pass all connection parameters including NTRIP settings.
+Future<bool> connectUsb(int deviceId, Map<String, dynamic> connectionParams) async {
   bool? ret = false;
   try {
-    ret = await methodChannel.invokeMethod<bool>('connectUsb', {
+    Map<String, dynamic> params = {
       'deviceId': deviceId,
-    });
+      ...connectionParams,
+    };
+    ret = await methodChannel.invokeMethod<bool>('connectUsb', params);
   } catch (e, trace) {
     String status = "connectUsb exception: '${e}': $trace";
     developer.log(status);

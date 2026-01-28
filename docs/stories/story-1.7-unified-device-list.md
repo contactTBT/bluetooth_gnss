@@ -263,10 +263,13 @@ Claude Opus 4.5 (claude-opus-4-5-20251101)
 | File | Action |
 |------|--------|
 | `lib/gnss_device.dart` | Created - GnssDevice model with DeviceConnectionType enum, factory constructors for BT/USB |
-| `lib/connect.dart` | Modified - Added unifiedDeviceListNotifier, selectedDeviceNotifier, loadUnifiedDeviceList(), getSelectedDevice(), setSelectedDevice(), connect() handles USB, fixed BT requirement check for USB |
+| `lib/connect.dart` | Modified - Added unifiedDeviceListNotifier, selectedDeviceNotifier, loadUnifiedDeviceList(), getSelectedDevice(), setSelectedDevice(), connect() handles USB, connectUsb() now passes NTRIP params |
+| `lib/channels.dart` | Modified - connectUsb() now accepts connectionParams map with NTRIP settings |
 | `lib/utils_ui.dart` | Modified - Added reactiveUnifiedDeviceDropDown() widget with BT/USB icons |
 | `lib/settings_screen.dart` | Modified - Replaced BT-only dropdown with unified device dropdown, added refresh button |
-| `android/.../bluetooth_gnss_service.java` | Modified - Added USB: prefix detection to skip BT connection when USB device selected |
+| `android/.../bluetooth_gnss_service.java` | Modified - Added USB: prefix detection, NTRIP callback sends to USB, UBX commands sent on USB connect |
+| `android/.../usb_conn_mgr.java` | Modified - Added output queue (ConcurrentLinkedQueue), writer thread (queue_to_outputstream_writer_thread), add_send_buffer() method for NTRIP/UBX data |
+| `android/.../MainActivity.java` | Modified - connectUsb handler reads NTRIP params from Flutter instead of hardcoding disable_ntrip=true |
 
 ### Completion Notes
 
@@ -285,6 +288,11 @@ Claude Opus 4.5 (claude-opus-4-5-20251101)
 - Fixed: IllegalArgumentException when connecting USB - service now detects "USB:" prefix in bdaddr and skips BT connection logic
 - Added: USB icon shown on floating button when USB device selected (instead of BT icon)
 - Fixed: UI now transitions to Connected state for USB connections - `_checkUpdateSelectedDev` now checks both BT and USB connection status via `getConnectionStatus()`
+- Fixed: NTRIP corrections now sent to USB device - added output queue and writer thread to `usb_conn_mgr`, modified NTRIP callback to send to USB
+- Fixed: UBX accuracy values (hAcc/vAcc) now available for USB - UBX commands sent on USB connect to enable PUBX messages
+- Fixed: NTRIP connection now starts for USB devices - was hardcoded `disable_ntrip=true`, now passes all NTRIP settings from Flutter
+- Fixed: Added flush() after USB writes for timely RTCM delivery
+- Fixed: NTRIP `m_all_ntrip_params_specified` flag now set for USB connections - was only set for Bluetooth, causing NTRIP to never auto-start for USB-only
 
 ### Change Log
 
@@ -293,3 +301,6 @@ Claude Opus 4.5 (claude-opus-4-5-20251101)
 | 2026-01-28 | Initial implementation - Unified device list UI complete |
 | 2026-01-28 | Bug fix - USB connection works without Bluetooth, fixed IllegalArgumentException |
 | 2026-01-28 | Bug fix - UI shows Connected state for USB (checks both BT and USB status) |
+| 2026-01-28 | Bug fix - NTRIP corrections and UBX accuracy data now work for USB connections |
+| 2026-01-28 | Bug fix - NTRIP connection enabled for USB (was hardcoded disabled) |
+| 2026-01-28 | Bug fix - NTRIP auto-start now works for USB-only (m_all_ntrip_params_specified flag) |

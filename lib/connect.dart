@@ -205,9 +205,29 @@ Future<void> connectUsb(GnssDevice device) async {
   paramMap.clear();
   String status = "unknown";
 
+  // Get log URI if logging is enabled
+  String logBtRxLogUri = prefService.get('log_bt_rx_log_uri') ?? "";
+
+  // Build connection parameters including NTRIP settings (same as Bluetooth)
+  Map<String, dynamic> connectionParams = {
+    'device_cep': prefService.get('device_cep') ?? "5.0",
+    'log_bt_rx_log_uri': logBtRxLogUri,
+    'disable_ntrip': prefService.get('disable_ntrip') ?? false,
+    'ntrip_host': prefService.get('ntrip_host'),
+    'ntrip_port': prefService.get('ntrip_port'),
+    'ntrip_mountpoint': prefService.get('ntrip_mountpoint'),
+    'ntrip_user': prefService.get('ntrip_user'),
+    'ntrip_pass': prefService.get('ntrip_pass'),
+    'mock_timestamp_use_system_time': true,
+    'mock_timestamp_offset_secs': double.parse(prefService.get('mock_timestamp_offset_secs') ?? "0.0"),
+    'mock_lat_offset_meters': double.parse(prefService.get('mock_lat_offset_meters') ?? "0.0"),
+    'mock_lon_offset_meters': double.parse(prefService.get('mock_lon_offset_meters') ?? "0.0"),
+    'mock_alt_offset_meters': double.parse(prefService.get('mock_alt_offset_meters') ?? "0.0"),
+  };
+
   try {
-    developer.log("connectUsb() invoking connectUsb channel");
-    final bool ret = await channels.connectUsb(deviceId);
+    developer.log("connectUsb() invoking connectUsb channel with params: $connectionParams");
+    final bool ret = await channels.connectUsb(deviceId, connectionParams);
 
     if (ret) {
       status = "Connecting to USB device - please wait ...";

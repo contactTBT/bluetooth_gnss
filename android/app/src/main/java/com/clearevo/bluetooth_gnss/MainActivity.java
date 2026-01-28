@@ -344,14 +344,50 @@ public static final String APPLICATION_ID = "com.clearevo.bluetooth_gnss";
                                                         args.put("secure", true);
                                                         args.put("reconnect", false);
                                                         args.put("autostart", false);
-                                                        args.put("log_bt_rx_log_uri", "");
-                                                        args.put("device_cep", "5.0");
-                                                        args.put("mock_timestamp_use_system_time", false);
-                                                        args.put("mock_timestamp_offset_secs", 0.0);
-                                                        args.put("mock_lat_offset_meters", 0.0);
-                                                        args.put("mock_lon_offset_meters", 0.0);
-                                                        args.put("mock_alt_offset_meters", 0.0);
-                                                        args.put("disable_ntrip", true);
+
+                                                        // Get parameters from Flutter (with defaults)
+                                                        String logUri = call.argument("log_bt_rx_log_uri");
+                                                        args.put("log_bt_rx_log_uri", logUri != null ? logUri : "");
+
+                                                        String deviceCep = call.argument("device_cep");
+                                                        args.put("device_cep", deviceCep != null ? deviceCep : "5.0");
+
+                                                        // Mock location parameters
+                                                        Boolean mockTimestampUseSystemTime = call.argument("mock_timestamp_use_system_time");
+                                                        args.put("mock_timestamp_use_system_time", mockTimestampUseSystemTime != null ? mockTimestampUseSystemTime : true);
+
+                                                        Double mockTimestampOffset = call.argument("mock_timestamp_offset_secs");
+                                                        args.put("mock_timestamp_offset_secs", mockTimestampOffset != null ? mockTimestampOffset : 0.0);
+
+                                                        Double mockLatOffset = call.argument("mock_lat_offset_meters");
+                                                        args.put("mock_lat_offset_meters", mockLatOffset != null ? mockLatOffset : 0.0);
+
+                                                        Double mockLonOffset = call.argument("mock_lon_offset_meters");
+                                                        args.put("mock_lon_offset_meters", mockLonOffset != null ? mockLonOffset : 0.0);
+
+                                                        Double mockAltOffset = call.argument("mock_alt_offset_meters");
+                                                        args.put("mock_alt_offset_meters", mockAltOffset != null ? mockAltOffset : 0.0);
+
+                                                        // NTRIP parameters - use settings from Flutter instead of hardcoding disable_ntrip=true
+                                                        Boolean disableNtrip = call.argument("disable_ntrip");
+                                                        args.put("disable_ntrip", disableNtrip != null ? disableNtrip : false);
+
+                                                        String ntripHost = call.argument("ntrip_host");
+                                                        if (ntripHost != null) args.put("ntrip_host", ntripHost);
+
+                                                        String ntripPort = call.argument("ntrip_port");
+                                                        if (ntripPort != null) args.put("ntrip_port", ntripPort);
+
+                                                        String ntripMountpoint = call.argument("ntrip_mountpoint");
+                                                        if (ntripMountpoint != null) args.put("ntrip_mountpoint", ntripMountpoint);
+
+                                                        String ntripUser = call.argument("ntrip_user");
+                                                        if (ntripUser != null) args.put("ntrip_user", ntripUser);
+
+                                                        String ntripPass = call.argument("ntrip_pass");
+                                                        if (ntripPass != null) args.put("ntrip_pass", ntripPass);
+
+                                                        Log.d(TAG, "connectUsb args: " + args);
                                                         intent.putExtra("args", args);
                                                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                                             context.startForegroundService(intent);

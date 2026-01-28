@@ -34,6 +34,8 @@ public class queue_to_outputstream_writer_thread extends Thread implements Close
     public void run()
     {
         Log.d(TAG, "queue_to_outputstream_writer_thread thread start");
+        long totalBytesWritten = 0;
+        long writeCount = 0;
         try {
             while (true) {
                 //System.out.println("m_queue poll pre poll");
@@ -41,6 +43,13 @@ public class queue_to_outputstream_writer_thread extends Thread implements Close
                 //Log.d(TAG,"queue_to_outputstream_writer_thread: m_queue poll buf:" + out_buf);
                 if (out_buf != null && out_buf.length > 0) {
                     m_os.write(out_buf);
+                    m_os.flush(); // Ensure data is sent immediately (important for USB serial)
+                    totalBytesWritten += out_buf.length;
+                    writeCount++;
+                    // Log every 50 writes to confirm data is being sent
+                    if (writeCount % 50 == 0) {
+                        Log.d(TAG, "queue_to_outputstream: wrote " + writeCount + " packets, " + totalBytesWritten + " bytes total");
+                    }
                 } else {
                     Thread.sleep(SLEEP_IF_NO_DATA_MILLIS);
                 }
@@ -52,6 +61,6 @@ public class queue_to_outputstream_writer_thread extends Thread implements Close
         } finally {
             close();
         }
-        Log.d(TAG, "queue_to_outputstream_writer_thread thread ended");
+        Log.d(TAG, "queue_to_outputstream_writer_thread thread ended, total bytes written: " + totalBytesWritten);
     }
 }

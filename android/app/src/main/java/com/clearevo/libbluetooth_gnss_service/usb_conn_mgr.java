@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * USB Serial Connection Manager.
@@ -54,6 +55,10 @@ public class usb_conn_mgr implements Closeable {
 
     private List<Closeable> m_cleanup_closables = new ArrayList<>();
     private Thread m_conn_state_watcher;
+
+    // Output queue for writing data to USB device (e.g., NTRIP corrections)
+    private ConcurrentLinkedQueue<byte[]> m_outgoing_buffers;
+    private queue_to_outputstream_writer_thread m_outgoing_thread;
 
     private final BroadcastReceiver m_permission_receiver = new BroadcastReceiver() {
         @Override
@@ -313,6 +318,13 @@ public class usb_conn_mgr implements Closeable {
                         m_cleanup_closables.add(m_usb_is);
                         m_cleanup_closables.add(m_usb_os);
 
+                        // Initialize output queue and writer thread for NTRIP corrections
+                        m_outgoing_buffers = new ConcurrentLinkedQueue<byte[]>();
+                        m_outgoing_thread = new queue_to_outputstream_writer_thread(m_outgoing_buffers, m_usb_os);
+                        m_cleanup_closables.add(m_outgoing_thread);
+                        m_outgoing_thread.start();
+                        Log.d(TAG, "Output writer thread started for USB");
+
                         // Notify detected and connected
                         if (m_callback != null) {
                             m_callback.on_baud_rate_detected(baudRate);
@@ -531,6 +543,23 @@ public class usb_conn_mgr implements Closeable {
     public void write(byte[] data) throws IOException {
         if (m_usb_os != null) {
             m_usb_os.write(data);
+        }
+    }
+
+    /**
+     * Add data to the outgoing buffer queue for asynchronous writing.
+     * Used for NTRIP corrections and UBX commands.
+     */
+    public void add_send_buffer(byte[] buffer) {
+        if (m_outgoing_buffers != null) {
+            m_outgoing_buffers.add(buffer);
+            // Log queue size periodically to confirm data flow
+            int size = m_outgoing_buffers.size();
+            if (size > 0 && size % 10 == 0) {
+                Log.d(TAG, "USB outgoing queue size: " + size + ", adding " + buffer.length + " bytes");
+            }
+        } else {
+            Log.w(TAG, "add_send_buffer called but m_outgoing_buffers is null!");
         }
     }
 
