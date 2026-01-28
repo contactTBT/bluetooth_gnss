@@ -6,7 +6,7 @@
 |-------|-------|
 | **Epic** | USB Serial GNSS Connectivity |
 | **Story ID** | 1.3 |
-| **Status** | Draft |
+| **Status** | Ready for Review |
 | **Priority** | High |
 | **Dependencies** | Story 1.2 |
 
@@ -144,3 +144,38 @@ m_usb_os = new UsbSerialOutputStream(port);
 - [rfcomm_conn_mgr.java](../../android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/rfcomm_conn_mgr.java) - Pattern reference
 - [usb-serial-for-android usage](https://github.com/mik3y/usb-serial-for-android#usage)
 - PRD: [docs/prd.md](../prd.md)
+
+---
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Opus 4.5 (claude-opus-4-5-20251101)
+
+### File List
+
+| File | Action |
+|------|--------|
+| `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/usb_conn_callbacks.java` | Created - Callback interface for USB connection events |
+| `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/usb_conn_mgr.java` | Created - USB serial connection manager |
+
+### Completion Notes
+
+- AC1: `usb_conn_mgr.java` created following rfcomm_conn_mgr patterns (Closeable, callbacks, connection watcher)
+- AC2: `usb_conn_callbacks.java` interface with on_usb_permission_result, on_usb_connected, on_usb_disconnected, on_usb_error
+- AC3: USB permission flow with PendingIntent and BroadcastReceiver (FLAG_MUTABLE for API 31+, RECEIVER_NOT_EXPORTED for API 33+)
+- AC4: connect() method opens UsbSerialPort with configurable baud rate (default 115200)
+- AC5: UsbSerialInputStream/UsbSerialOutputStream inner classes wrap UsbSerialPort for standard stream access
+- AC6: close() method releases all resources (port, connection, receiver, watcher thread)
+- AC7: Errors reported via on_usb_error callback with descriptive messages
+- Build succeeds: `flutter build apk` produces 56.1MB APK (deprecation warning for getParcelableExtra is expected on newer Android)
+- All existing Flutter tests pass (2/2)
+- rfcomm_conn_mgr.java unchanged (IV1)
+- IV2/IV3 require manual device verification
+
+### Change Log
+
+| Date | Change |
+|------|--------|
+| 2026-01-28 | Initial implementation - USB connection manager core complete |
