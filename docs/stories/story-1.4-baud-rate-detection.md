@@ -6,7 +6,7 @@
 |-------|-------|
 | **Epic** | USB Serial GNSS Connectivity |
 | **Story ID** | 1.4 |
-| **Status** | Draft |
+| **Status** | Done |
 | **Priority** | High |
 | **Dependencies** | Story 1.3 |
 
@@ -163,3 +163,36 @@ public interface usb_conn_callbacks {
 
 - NMEA 0183 specification (checksum calculation)
 - PRD: [docs/prd.md](../prd.md)
+
+---
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Opus 4.5 (claude-opus-4-5-20251101)
+
+### File List
+
+| File | Action |
+|------|--------|
+| `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/usb_conn_callbacks.java` | Modified - Added on_baud_rate_detected() and on_baud_rate_detection_progress() callbacks |
+| `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/usb_conn_mgr.java` | Modified - Added connectWithAutoDetect(), validateNmeaData(), isValidNmeaSentence() methods |
+
+### Completion Notes
+
+- AC1: BAUD_RATES array with {115200, 57600, 38400, 19200, 9600, 4800} implemented
+- AC2: validateNmeaData() and isValidNmeaSentence() validate NMEA structure including $ prefix, * delimiter, and XOR checksum
+- AC3: DETECTION_TIMEOUT_PER_RATE_MS = 800ms × 6 rates = 4.8 seconds max (under 5 second requirement)
+- AC4: on_baud_rate_detected(baudRate) callback added and invoked on successful detection
+- AC5: on_usb_error() reports "Could not detect baud rate. Tried: [...]" with all attempted rates
+- AC6: Cancellation check via `if (closed) return` at start of each baud rate iteration
+- Build succeeds: `flutter build apk` produces 56.1MB APK
+- All Flutter tests pass (2/2)
+- IV1/IV2/IV3 require manual device verification (deferred to Story 1.5 integration testing)
+
+### Change Log
+
+| Date | Change |
+|------|--------|
+| 2026-01-28 | Initial implementation - Baud rate auto-detection complete |

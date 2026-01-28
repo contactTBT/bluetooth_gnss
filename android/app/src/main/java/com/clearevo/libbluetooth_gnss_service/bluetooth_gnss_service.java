@@ -21,6 +21,7 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.content.Intent;
+import android.hardware.usb.UsbDevice;
 import android.location.Location;
 import android.location.LocationManager;
 import android.location.LocationProvider;
@@ -63,7 +64,7 @@ import java.util.UUID;
 
 
 
-public class bluetooth_gnss_service extends Service implements rfcomm_conn_callbacks, gnss_sentence_parser.gnss_parser_callbacks, ntrip_conn_callbacks, LogObserver {
+public class bluetooth_gnss_service extends Service implements rfcomm_conn_callbacks, usb_conn_callbacks, gnss_sentence_parser.gnss_parser_callbacks, ntrip_conn_callbacks, LogObserver {
 
     static {
         System.loadLibrary("rust_lib_bluetooth_gnss");
@@ -76,8 +77,18 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     String[] SATS_USED_KEYS = new String[]{"GP_n_sats_used", "GL_n_sats_used", "GA_n_sats_used", "GB_n_sats_used", "GQ_n_sats_used"};
 
     rfcomm_conn_mgr g_rfcomm_mgr = null;
+    usb_conn_mgr g_usb_mgr = null;
     ntrip_conn_mgr m_ntrip_conn_mgr = null;
     private gnss_sentence_parser m_gnss_parser = new gnss_sentence_parser();
+
+    // Connection type tracking
+    public enum ConnectionType {
+        NONE,
+        BLUETOOTH_RFCOMM,
+        BLUETOOTH_BLE,
+        USB_SERIAL
+    }
+    private ConnectionType m_connection_type = ConnectionType.NONE;
 
     Thread m_connecting_thread = null;
     Thread m_ntrip_connecting_thread = null;
@@ -229,6 +240,10 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                 String msg = "bluetooth_gnss_service: startservice: Target Bluetooth device not specifed - cannot start...";
                 log(TAG, msg);
                 toast(msg);
+            } else if (m_bdaddr.startsWith("USB:")) {
+                // USB connection - just start foreground, actual USB connect happens via startUsbConnection()
+                log(TAG, "USB connection requested, starting foreground service only");
+                start_foreground("Waiting for USB...", "device: " + m_bdaddr.substring(4), "");
             } else {
                 log(TAG, "onStartCommand got bdaddr");
                 int start_ret = connect(connectArgs, m_bdaddr, m_secure_rfcomm, getApplicationContext());
@@ -311,6 +326,158 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
 
     public boolean is_trying_ntrip_connect() {
         return m_ntrip_connecting_thread != null && m_ntrip_connecting_thread.isAlive();
+    }
+
+    // USB connection status methods
+    public boolean is_usb_connected() {
+        return g_usb_mgr != null && g_usb_mgr.isConnected();
+    }
+
+    public ConnectionType getConnectionType() {
+        return m_connection_type;
+    }
+
+    // USB connection method
+    Thread m_usb_connecting_thread = null;
+
+    public void startUsbConnection(UsbDevice device) {
+        log(TAG, "startUsbConnection() device: " + device.getDeviceName());
+        closing = false;
+
+        if (g_usb_mgr != null) {
+            try {
+                g_usb_mgr.close();
+            } catch (Exception e) {
+                // ignore
+            }
+            g_usb_mgr = null;
+        }
+
+        m_gnss_parser = new gnss_sentence_parser();
+        m_gnss_parser.set_callback(this);
+
+        g_usb_mgr = new usb_conn_mgr(this, this);
+
+        // Check and request permission if needed
+        if (!g_usb_mgr.hasPermission(device)) {
+            log(TAG, "USB permission not granted, requesting...");
+            g_usb_mgr.requestPermission(device);
+            // Store device for later connection after permission is granted
+            m_pending_usb_device = device;
+            return;
+        }
+
+        // Permission already granted, connect directly
+        connectUsbDevice(device);
+    }
+
+    private UsbDevice m_pending_usb_device = null;
+
+    private void connectUsbDevice(UsbDevice device) {
+        m_usb_connecting_thread = new Thread() {
+            public void run() {
+                try {
+                    log(TAG, "USB connect thread starting connectWithAutoDetect");
+                    g_usb_mgr.connectWithAutoDetect(device);
+                } catch (final Exception e) {
+                    log(TAG, "USB connect exception: " + getStackTraceString(e));
+                    m_handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            toast("USB Connect failed: " + e.getMessage());
+                            updateNotification("USB Connect failed", e.getMessage(), "");
+                        }
+                    });
+                }
+            }
+        };
+        m_usb_connecting_thread.start();
+    }
+
+    // USB callback implementations
+    @Override
+    public void on_usb_permission_result(boolean granted) {
+        log(TAG, "on_usb_permission_result: " + granted);
+        if (granted && m_pending_usb_device != null) {
+            m_handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    toast("USB permission granted, connecting...");
+                    connectUsbDevice(m_pending_usb_device);
+                    m_pending_usb_device = null;
+                }
+            });
+        } else {
+            m_handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    toast("USB permission denied");
+                }
+            });
+            m_pending_usb_device = null;
+        }
+    }
+
+    @Override
+    public void on_usb_connected(String deviceName, int baudRate) {
+        log(TAG, "on_usb_connected: " + deviceName + " @ " + baudRate + " baud");
+        m_connection_type = ConnectionType.USB_SERIAL;
+
+        m_handler.post(new Runnable() {
+            @Override
+            public void run() {
+                toast("USB Connected @ " + baudRate + " baud");
+                updateNotification("Connected (USB)", "Device: " + deviceName + " @ " + baudRate, "");
+            }
+        });
+
+        // Start readline thread for NMEA data
+        if (g_usb_mgr != null) {
+            g_usb_mgr.startReadlineThread();
+        }
+    }
+
+    @Override
+    public void on_usb_disconnected(String reason) {
+        log(TAG, "on_usb_disconnected: " + reason);
+        m_connection_type = ConnectionType.NONE;
+
+        m_handler.post(new Runnable() {
+            @Override
+            public void run() {
+                toast("USB Disconnected: " + reason);
+                updateNotification("Disconnected (USB)", reason, "");
+            }
+        });
+
+        deactivate_mock_location();
+    }
+
+    @Override
+    public void on_usb_error(String error) {
+        log(TAG, "on_usb_error: " + error);
+        m_handler.post(new Runnable() {
+            @Override
+            public void run() {
+                toast("USB Error: " + error);
+            }
+        });
+    }
+
+    @Override
+    public void on_baud_rate_detected(int baudRate) {
+        log(TAG, "on_baud_rate_detected: " + baudRate);
+        m_handler.post(new Runnable() {
+            @Override
+            public void run() {
+                toast("Detected baud rate: " + baudRate);
+            }
+        });
+    }
+
+    @Override
+    public void on_baud_rate_detection_progress(int currentRate, int ratesRemaining) {
+        log(TAG, "Trying baud rate: " + currentRate + " (" + ratesRemaining + " remaining)");
     }
 
     Thread m_auto_reconnect_thread = null;
@@ -549,6 +716,20 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
             log(TAG, "close()4");
         }
 
+        // Close USB connection
+        if (g_usb_mgr != null) {
+            log(TAG, "close() g_usb_mgr");
+            was_connected = was_connected || g_usb_mgr.isConnected();
+            try {
+                g_usb_mgr.close();
+            } catch (Exception e) {
+                log(TAG, "close() g_usb_mgr exception: " + getStackTraceString(e));
+            }
+            g_usb_mgr = null;
+        }
+
+        m_connection_type = ConnectionType.NONE;
+
         log(TAG, "close() m_ntrip_conn_mgr: "+m_ntrip_conn_mgr);
         if (m_ntrip_conn_mgr != null) {
             try {
@@ -620,12 +801,13 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     public void on_rfcomm_connected()
     {
         log(TAG, "on_rfcomm_connected()");
+        m_connection_type = m_ble_qstarz_mode ? ConnectionType.BLUETOOTH_BLE : ConnectionType.BLUETOOTH_RFCOMM;
         m_handler.post(
                 new Runnable() {
                     @Override
                     public void run() {
                         toast("Connected...");
-                        updateNotification("Connected...", "Target device: "+m_bdaddr, "");
+                        updateNotification("Connected (BT)", "Target device: "+m_bdaddr, "");
                     }
                 }
         );

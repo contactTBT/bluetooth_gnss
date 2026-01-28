@@ -6,7 +6,7 @@
 |-------|-------|
 | **Epic** | USB Serial GNSS Connectivity |
 | **Story ID** | 1.5 |
-| **Status** | Draft |
+| **Status** | Done |
 | **Priority** | High |
 | **Dependencies** | Story 1.3, Story 1.4 |
 
@@ -182,3 +182,39 @@ static Future<Map<String, dynamic>> getConnectionStatus() async {
 
 - [bluetooth_gnss_service.java](../../android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/bluetooth_gnss_service.java)
 - PRD: [docs/prd.md](../prd.md)
+
+---
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Opus 4.5 (claude-opus-4-5-20251101)
+
+### File List
+
+| File | Action |
+|------|--------|
+| `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/bluetooth_gnss_service.java` | Modified - Added ConnectionType enum, usb_conn_mgr member, USB callbacks, startUsbConnection(), close() USB handling |
+| `android/app/src/main/java/com/clearevo/bluetooth_gnss/MainActivity.java` | Modified - Added connectUsb, disconnectUsb, getConnectionStatus platform channel handlers |
+| `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/UsbDeviceManager.java` | Modified - Added getDeviceById() method |
+| `lib/channels.dart` | Modified - Added connectUsb(), disconnectUsb(), getConnectionStatus() Flutter methods |
+
+### Completion Notes
+
+- AC1: ConnectionType enum added (NONE, BLUETOOTH_RFCOMM, BLUETOOTH_BLE, USB_SERIAL), startUsbConnection() accepts UsbDevice parameter
+- AC2: g_usb_mgr member variable managed alongside g_rfcomm_mgr, close() properly closes both
+- AC3: USB data routed through existing inputstream_to_queue_reader_thread and gnss_sentence_parser via readline callbacks
+- AC4: Mock location updates use existing setMock() method - same code path as Bluetooth
+- AC5: Notification shows "Connected (USB)" vs "Connected (BT)" based on connection type
+- AC6: Position offsets use same mock_lat/lon/alt_offset_meters fields - applied in setMock()
+- AC7: USB data logged via same log_bt_rx() method through on_readline callback
+- Build succeeds: `flutter build apk` produces 56.1MB APK
+- All Flutter tests pass (2/2)
+- IV1/IV2/IV3 require manual device verification
+
+### Change Log
+
+| Date | Change |
+|------|--------|
+| 2026-01-28 | Initial implementation - Service integration for USB GNSS complete |

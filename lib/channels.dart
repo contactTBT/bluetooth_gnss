@@ -207,3 +207,56 @@ Future<bool> isUsbHostSupported() async {
   }
   return ret ?? false;
 }
+
+/// Connect to a USB GNSS device by its device ID.
+/// Returns true if connection was initiated successfully.
+Future<bool> connectUsb(int deviceId) async {
+  bool? ret = false;
+  try {
+    ret = await methodChannel.invokeMethod<bool>('connectUsb', {
+      'deviceId': deviceId,
+    });
+  } catch (e, trace) {
+    String status = "connectUsb exception: '${e}': $trace";
+    developer.log(status);
+  }
+  return ret ?? false;
+}
+
+/// Disconnect from USB GNSS device.
+/// Returns true if disconnection was successful.
+Future<bool> disconnectUsb() async {
+  bool? ret = false;
+  try {
+    ret = await methodChannel.invokeMethod<bool>('disconnectUsb');
+  } catch (e, trace) {
+    String status = "disconnectUsb exception: '${e}': $trace";
+    developer.log(status);
+  }
+  return ret ?? false;
+}
+
+/// Get current connection status.
+/// Returns a map with:
+/// - connected: bool - whether any connection is active
+/// - type: String - connection type (NONE, BLUETOOTH_RFCOMM, BLUETOOTH_BLE, USB_SERIAL)
+/// - btConnected: bool - whether Bluetooth is connected
+/// - usbConnected: bool - whether USB is connected
+Future<Map<String, dynamic>> getConnectionStatus() async {
+  Map<String, dynamic> ret = {
+    'connected': false,
+    'type': 'NONE',
+    'btConnected': false,
+    'usbConnected': false,
+  };
+  try {
+    var result = await methodChannel.invokeMethod<Map<dynamic, dynamic>>('getConnectionStatus');
+    if (result != null) {
+      ret = Map<String, dynamic>.from(result);
+    }
+  } catch (e, trace) {
+    String status = "getConnectionStatus exception: '${e}': $trace";
+    developer.log(status);
+  }
+  return ret;
+}

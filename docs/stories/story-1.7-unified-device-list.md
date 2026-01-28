@@ -6,7 +6,7 @@
 |-------|-------|
 | **Epic** | USB Serial GNSS Connectivity |
 | **Story ID** | 1.7 |
-| **Status** | Draft |
+| **Status** | Done |
 | **Priority** | High |
 | **Dependencies** | Story 1.5 |
 
@@ -249,3 +249,47 @@ Widget _buildDeviceList() {
 
 - [connect_screen_idle.dart](../../lib/connect_screen_idle.dart)
 - PRD: [docs/prd.md](../prd.md)
+
+---
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Opus 4.5 (claude-opus-4-5-20251101)
+
+### File List
+
+| File | Action |
+|------|--------|
+| `lib/gnss_device.dart` | Created - GnssDevice model with DeviceConnectionType enum, factory constructors for BT/USB |
+| `lib/connect.dart` | Modified - Added unifiedDeviceListNotifier, selectedDeviceNotifier, loadUnifiedDeviceList(), getSelectedDevice(), setSelectedDevice(), connect() handles USB, fixed BT requirement check for USB |
+| `lib/utils_ui.dart` | Modified - Added reactiveUnifiedDeviceDropDown() widget with BT/USB icons |
+| `lib/settings_screen.dart` | Modified - Replaced BT-only dropdown with unified device dropdown, added refresh button |
+| `android/.../bluetooth_gnss_service.java` | Modified - Added USB: prefix detection to skip BT connection when USB device selected |
+
+### Completion Notes
+
+- AC1: Settings screen now shows unified device list with both Bluetooth and USB devices via `reactiveUnifiedDeviceDropDown`
+- AC2: Each device displays an icon (blue Bluetooth icon, green USB icon) and subtitle showing device details
+- AC3: Refresh button added to reload device list; `loadUnifiedDeviceList()` fetches both BT paired devices and connected USB devices
+- AC4: `connect()` function checks selected device type and calls `connectUsb()` for USB devices
+- AC5: Bluetooth devices continue to work via `connectBluetooth()` - original logic preserved
+- AC6: Empty state shows "No devices found" with hint to pair Bluetooth or connect USB
+- Build succeeds: `flutter build apk` produces 56.1MB APK
+- All Flutter tests pass (2/2)
+- IV1/IV2/IV3 require manual device verification
+
+### Bug Fixes (Post-Implementation)
+- Fixed: USB connection now works with Bluetooth turned OFF (BT check skipped when USB device selected)
+- Fixed: IllegalArgumentException when connecting USB - service now detects "USB:" prefix in bdaddr and skips BT connection logic
+- Added: USB icon shown on floating button when USB device selected (instead of BT icon)
+- Fixed: UI now transitions to Connected state for USB connections - `_checkUpdateSelectedDev` now checks both BT and USB connection status via `getConnectionStatus()`
+
+### Change Log
+
+| Date | Change |
+|------|--------|
+| 2026-01-28 | Initial implementation - Unified device list UI complete |
+| 2026-01-28 | Bug fix - USB connection works without Bluetooth, fixed IllegalArgumentException |
+| 2026-01-28 | Bug fix - UI shows Connected state for USB (checks both BT and USB status) |

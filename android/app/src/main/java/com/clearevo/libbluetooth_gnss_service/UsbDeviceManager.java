@@ -170,4 +170,24 @@ public class UsbDeviceManager {
     public boolean isUsbHostSupported() {
         return context.getPackageManager().hasSystemFeature("android.hardware.usb.host");
     }
+
+    /**
+     * Get a USB device by its device ID.
+     *
+     * @param deviceId The device ID to search for
+     * @return The UsbDevice if found, null otherwise
+     */
+    public UsbDevice getDeviceById(int deviceId) {
+        if (usbManager == null) {
+            return null;
+        }
+
+        HashMap<String, UsbDevice> deviceList = usbManager.getDeviceList();
+        for (UsbDevice device : deviceList.values()) {
+            if (device.getDeviceId() == deviceId) {
+                return device;
+            }
+        }
+        return null;
+    }
 }

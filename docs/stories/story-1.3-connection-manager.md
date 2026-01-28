@@ -6,7 +6,7 @@
 |-------|-------|
 | **Epic** | USB Serial GNSS Connectivity |
 | **Story ID** | 1.3 |
-| **Status** | Ready for Review |
+| **Status** | Done |
 | **Priority** | High |
 | **Dependencies** | Story 1.2 |
 

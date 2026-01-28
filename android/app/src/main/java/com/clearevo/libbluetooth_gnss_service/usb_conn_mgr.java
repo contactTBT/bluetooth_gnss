@@ -18,7 +18,9 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -30,6 +32,11 @@ public class usb_conn_mgr implements Closeable {
 
     private static final String TAG = "btgnss_usbmgr";
     private static final String ACTION_USB_PERMISSION = "com.clearevo.bluetooth_gnss.USB_PERMISSION";
+
+    // Baud rate auto-detection constants
+    public static final int[] BAUD_RATES = {115200, 57600, 38400, 19200, 9600, 4800};
+    public static final int DETECTION_TIMEOUT_PER_RATE_MS = 800;
+    public static final int MIN_VALID_SENTENCES = 2;
 
     private final Context m_context;
     private final UsbManager m_usb_manager;
@@ -210,6 +217,220 @@ public class usb_conn_mgr implements Closeable {
             }
             close();
             throw e;
+        }
+    }
+
+    /**
+     * Connect to the USB serial device with automatic baud rate detection.
+     * Cycles through common baud rates and validates NMEA data to find the correct rate.
+     * Permission must be granted before calling this method.
+     *
+     * @param device The USB device to connect to
+     */
+    public void connectWithAutoDetect(UsbDevice device) throws Exception {
+        Log.d(TAG, "connectWithAutoDetect() start - device: " + device.getDeviceName());
+
+        if (closed) {
+            throw new Exception("usb_conn_mgr is closed");
+        }
+
+        m_target_usb_device = device;
+
+        // Check permission
+        if (!hasPermission(device)) {
+            String error = "USB permission not granted for device: " + device.getDeviceName();
+            Log.d(TAG, error);
+            if (m_callback != null) {
+                m_callback.on_usb_error(error);
+            }
+            throw new Exception(error);
+        }
+
+        // Find the driver for this device
+        UsbSerialDriver driver = UsbSerialProber.getDefaultProber().probeDevice(device);
+        if (driver == null) {
+            String error = "No USB serial driver found for device: " + device.getDeviceName();
+            if (m_callback != null) {
+                m_callback.on_usb_error(error);
+            }
+            throw new Exception(error);
+        }
+
+        Log.d(TAG, "Found driver: " + driver.getClass().getSimpleName() + " with " + driver.getPorts().size() + " ports");
+
+        // Get the first port
+        if (driver.getPorts().isEmpty()) {
+            String error = "No ports found on USB device";
+            if (m_callback != null) {
+                m_callback.on_usb_error(error);
+            }
+            throw new Exception(error);
+        }
+        m_usb_serial_port = driver.getPorts().get(0);
+
+        // Open connection
+        m_usb_connection = m_usb_manager.openDevice(device);
+        if (m_usb_connection == null) {
+            String error = "Failed to open USB device connection";
+            if (m_callback != null) {
+                m_callback.on_usb_error(error);
+            }
+            throw new Exception(error);
+        }
+
+        try {
+            // Open the port
+            m_usb_serial_port.open(m_usb_connection);
+
+            // Try each baud rate
+            for (int i = 0; i < BAUD_RATES.length; i++) {
+                if (closed) {
+                    Log.d(TAG, "Auto-detection cancelled (closed)");
+                    return;
+                }
+
+                int baudRate = BAUD_RATES[i];
+                int ratesRemaining = BAUD_RATES.length - i - 1;
+
+                Log.d(TAG, "Trying baud rate: " + baudRate);
+
+                if (m_callback != null) {
+                    m_callback.on_baud_rate_detection_progress(baudRate, ratesRemaining);
+                }
+
+                try {
+                    m_usb_serial_port.setParameters(baudRate, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE);
+
+                    // Try to read and validate NMEA
+                    if (validateNmeaData(DETECTION_TIMEOUT_PER_RATE_MS)) {
+                        Log.d(TAG, "Detected baud rate: " + baudRate);
+                        m_baud_rate = baudRate;
+
+                        // Create input/output streams
+                        m_usb_is = new UsbSerialInputStream(m_usb_serial_port);
+                        m_usb_os = new UsbSerialOutputStream(m_usb_serial_port);
+
+                        m_cleanup_closables.add(m_usb_is);
+                        m_cleanup_closables.add(m_usb_os);
+
+                        // Notify detected and connected
+                        if (m_callback != null) {
+                            m_callback.on_baud_rate_detected(baudRate);
+                            m_callback.on_usb_connected(device.getDeviceName(), baudRate);
+                            m_callback.on_readline_stream_connected();
+                        }
+
+                        // Start connection state watcher
+                        startConnectionWatcher();
+
+                        Log.d(TAG, "connectWithAutoDetect() complete at " + baudRate + " baud");
+                        return;
+                    }
+                } catch (Exception e) {
+                    Log.d(TAG, "Error at baud " + baudRate + ": " + e.getMessage());
+                }
+            }
+
+            // All rates failed
+            String error = "Could not detect baud rate. Tried: " + Arrays.toString(BAUD_RATES);
+            Log.d(TAG, error);
+            if (m_callback != null) {
+                m_callback.on_usb_error(error);
+            }
+            close();
+            throw new Exception(error);
+
+        } catch (Exception e) {
+            Log.d(TAG, "connectWithAutoDetect() exception: " + Log.getStackTraceString(e));
+            close();
+            throw e;
+        }
+    }
+
+    /**
+     * Validate that NMEA data is being received at the current baud rate.
+     *
+     * @param timeoutMs Maximum time to wait for valid data
+     * @return true if valid NMEA sentences were received
+     */
+    private boolean validateNmeaData(int timeoutMs) {
+        byte[] buffer = new byte[256];
+        StringBuilder lineBuilder = new StringBuilder();
+        int validSentences = 0;
+        long startTime = System.currentTimeMillis();
+
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            if (closed) {
+                return false;
+            }
+
+            try {
+                int bytesRead = m_usb_serial_port.read(buffer, 100);
+                if (bytesRead > 0) {
+                    String chunk = new String(buffer, 0, bytesRead, StandardCharsets.US_ASCII);
+                    lineBuilder.append(chunk);
+
+                    // Check for complete NMEA sentences
+                    String data = lineBuilder.toString();
+                    int newlineIdx;
+                    while ((newlineIdx = data.indexOf('\n')) != -1) {
+                        String line = data.substring(0, newlineIdx).trim();
+                        data = data.substring(newlineIdx + 1);
+
+                        if (isValidNmeaSentence(line)) {
+                            validSentences++;
+                            Log.d(TAG, "Valid NMEA sentence #" + validSentences + ": " + line.substring(0, Math.min(20, line.length())) + "...");
+                            if (validSentences >= MIN_VALID_SENTENCES) {
+                                return true;
+                            }
+                        }
+                    }
+                    lineBuilder = new StringBuilder(data);
+                }
+            } catch (Exception e) {
+                Log.d(TAG, "Error reading during validation: " + e.getMessage());
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Validate a single NMEA sentence.
+     * Checks for proper format: starts with $, contains *, checksum matches.
+     *
+     * @param line The line to validate
+     * @return true if the line is a valid NMEA sentence
+     */
+    private boolean isValidNmeaSentence(String line) {
+        // Basic NMEA validation: starts with $, contains *, checksum matches
+        if (line == null || !line.startsWith("$") || !line.contains("*")) {
+            return false;
+        }
+
+        int asteriskIdx = line.lastIndexOf('*');
+        if (asteriskIdx < 1 || asteriskIdx + 3 > line.length()) {
+            return false;
+        }
+
+        // Verify checksum
+        String payload = line.substring(1, asteriskIdx);
+        String checksumStr = line.substring(asteriskIdx + 1);
+
+        // Handle case where checksum might have trailing characters
+        if (checksumStr.length() > 2) {
+            checksumStr = checksumStr.substring(0, 2);
+        }
+
+        int calculatedChecksum = 0;
+        for (char c : payload.toCharArray()) {
+            calculatedChecksum ^= c;
+        }
+
+        try {
+            int providedChecksum = Integer.parseInt(checksumStr, 16);
+            return calculatedChecksum == providedChecksum;
+        } catch (NumberFormatException e) {
+            return false;
         }
     }
 

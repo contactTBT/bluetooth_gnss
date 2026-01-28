@@ -326,6 +326,88 @@ public static final String APPLICATION_ID = "com.clearevo.bluetooth_gnss";
                                     } else {
                                         return_success_val = false;
                                     }
+                                } else if (call.method.equals("connectUsb")) {
+                                    int deviceId = call.argument("deviceId");
+                                    Log.d(TAG, "connectUsb deviceId: " + deviceId);
+                                    if (usbDeviceManager != null) {
+                                        UsbDevice device = usbDeviceManager.getDeviceById(deviceId);
+                                        if (device != null) {
+                                            // Start/bind service first, then connect USB
+                                            final Context context = getApplicationContext();
+                                            new Thread() {
+                                                public void run() {
+                                                    try {
+                                                        // Start service if not running
+                                                        Intent intent = new Intent(context, bluetooth_gnss_service.class);
+                                                        HashMap<String, Object> args = new HashMap<>();
+                                                        args.put("bdaddr", "USB:" + device.getDeviceName());
+                                                        args.put("secure", true);
+                                                        args.put("reconnect", false);
+                                                        args.put("autostart", false);
+                                                        args.put("log_bt_rx_log_uri", "");
+                                                        args.put("device_cep", "5.0");
+                                                        args.put("mock_timestamp_use_system_time", false);
+                                                        args.put("mock_timestamp_offset_secs", 0.0);
+                                                        args.put("mock_lat_offset_meters", 0.0);
+                                                        args.put("mock_lon_offset_meters", 0.0);
+                                                        args.put("mock_alt_offset_meters", 0.0);
+                                                        args.put("disable_ntrip", true);
+                                                        intent.putExtra("args", args);
+                                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                            context.startForegroundService(intent);
+                                                        } else {
+                                                            context.startService(intent);
+                                                        }
+                                                        // Wait for service to be bound
+                                                        Thread.sleep(500);
+                                                        // Connect USB via service
+                                                        m_handler.post(new Runnable() {
+                                                            @Override
+                                                            public void run() {
+                                                                if (m_service != null) {
+                                                                    m_service.startUsbConnection(device);
+                                                                } else {
+                                                                    toast("Service not ready, please try again");
+                                                                }
+                                                            }
+                                                        });
+                                                    } catch (Throwable tr) {
+                                                        Log.d(TAG, "connectUsb exception: " + Log.getStackTraceString(tr));
+                                                    }
+                                                }
+                                            }.start();
+                                            return_success_val = true;
+                                        } else {
+                                            Log.d(TAG, "connectUsb device not found for id: " + deviceId);
+                                            return_success_val = false;
+                                        }
+                                    } else {
+                                        return_success_val = false;
+                                    }
+                                } else if (call.method.equals("disconnectUsb")) {
+                                    Log.d(TAG, "disconnectUsb");
+                                    if (m_service != null && mBound) {
+                                        m_service.close();
+                                        return_success_val = true;
+                                    } else {
+                                        return_success_val = false;
+                                    }
+                                } else if (call.method.equals("getConnectionStatus")) {
+                                    HashMap<String, Object> status = new HashMap<>();
+                                    if (m_service != null && mBound) {
+                                        boolean btConnected = m_service.is_bt_connected();
+                                        boolean usbConnected = m_service.is_usb_connected();
+                                        status.put("connected", btConnected || usbConnected);
+                                        status.put("type", m_service.getConnectionType().name());
+                                        status.put("btConnected", btConnected);
+                                        status.put("usbConnected", usbConnected);
+                                    } else {
+                                        status.put("connected", false);
+                                        status.put("type", "NONE");
+                                        status.put("btConnected", false);
+                                        status.put("usbConnected", false);
+                                    }
+                                    return_success_val = status;
                                 } else if (call.method.equals("is_coarse_location_enabled")) {
 
                                     Log.d(TAG, "is_coarse_location_enabled 0");

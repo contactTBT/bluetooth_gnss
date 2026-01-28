@@ -29,4 +29,17 @@ public interface usb_conn_callbacks extends readline_callbacks {
      * @param error description of the error
      */
     void on_usb_error(String error);
+
+    /**
+     * Called when baud rate is successfully auto-detected.
+     * @param baudRate the detected baud rate
+     */
+    void on_baud_rate_detected(int baudRate);
+
+    /**
+     * Called to report progress during baud rate auto-detection.
+     * @param currentRate the baud rate currently being tested
+     * @param ratesRemaining number of rates left to try
+     */
+    void on_baud_rate_detection_progress(int currentRate, int ratesRemaining);
 }

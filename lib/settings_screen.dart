@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:math' show cos, sqrt, asin;
 
+import 'package:bluetooth_gnss/gnss_device.dart';
 import 'package:bluetooth_gnss/utils_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -40,6 +41,9 @@ class SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     log_bt_rx_log_uri = prefService.get('log_bt_rx_log_uri') ?? "";
     event_stream = _settingsEventChannel.receiveBroadcastStream();
+
+    // Load unified device list (BT + USB)
+    loadUnifiedDeviceList();
     if (true) {
       developer.log("settings event stream sub");
       event_stream_sub = event_stream!.listen((dynamic event) async {
@@ -247,10 +251,21 @@ class SettingsScreenState extends State<SettingsScreen> {
                 inAsyncCall: loading,
                 child: PrefPage(children: [
                   const PrefTitle(title: Text('Target device:')),
-                  reactivePrefDropDown(
-                      'target_bdaddr',
-                      "Select a Bluetooth device\n(Pair in Phone Settings > Device connection > Pair new device)",
-                      bdMapNotifier),
+                  reactiveUnifiedDeviceDropDown(
+                      title: "Select GNSS device",
+                      emptyHint: "No devices found\n(Pair Bluetooth or connect USB)"),
+                  // Refresh button to reload device list
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Refresh device list'),
+                      onPressed: () async {
+                        await loadUnifiedDeviceList();
+                        setState(() {}); // Trigger rebuild
+                      },
+                    ),
+                  ),
                  PrefText(
                           key: ValueKey(
                               'device_cep'),

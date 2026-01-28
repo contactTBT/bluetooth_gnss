@@ -5,6 +5,7 @@ import 'package:pref/pref.dart';
 
 import 'channels.dart';
 import 'connect.dart';
+import 'gnss_device.dart';
 
 const double defaultChecklistIconSize = 35;
 const double defaultConnectStateIconSize = 60;
@@ -222,4 +223,106 @@ Widget reactivePrefDropDown(String pref_key, String title,
           pref: pref_key);
     },
   );
+}
+
+/// Builds a unified device dropdown showing both Bluetooth and USB devices
+Widget reactiveUnifiedDeviceDropDown({
+  required String title,
+  required String emptyHint,
+}) {
+  return ValueListenableBuilder<List<GnssDevice>>(
+    valueListenable: unifiedDeviceListNotifier,
+    builder: (BuildContext context, List<GnssDevice> devices, Widget? child) {
+      developer.log("reactiveUnifiedDeviceDropDown build: ${devices.length} devices");
+
+      // Get currently selected device
+      GnssDevice? selectedDevice = getSelectedDevice();
+      String? selectedValue = selectedDevice?.id;
+
+      // Build dropdown items
+      List<DropdownMenuItem<String>> items = [];
+      for (GnssDevice device in devices) {
+        items.add(DropdownMenuItem(
+          value: device.id,
+          child: Row(
+            children: [
+              Icon(
+                device.type == DeviceConnectionType.bluetooth
+                    ? Icons.bluetooth
+                    : Icons.usb,
+                color: device.type == DeviceConnectionType.bluetooth
+                    ? Colors.blue
+                    : Colors.green,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      device.name,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      device.subtitle,
+                      style: const TextStyle(fontSize: 10, color: Colors.grey),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ));
+      }
+
+      if (items.isEmpty) {
+        return ListTile(
+          title: Text(title),
+          subtitle: Text(emptyHint),
+          leading: const Icon(Icons.warning_amber, color: Colors.orange),
+        );
+      }
+
+      // Validate selection - reset if selected device not in list
+      if (selectedValue != null) {
+        bool found = devices.any((d) => d.id == selectedValue);
+        if (!found) {
+          selectedValue = null;
+        }
+      }
+
+      return ListTile(
+        title: Text(title),
+        subtitle: DropdownButton<String>(
+          value: selectedValue,
+          hint: Text(emptyHint),
+          isExpanded: true,
+          items: items,
+          onChanged: (String? newValue) async {
+            if (newValue == null) {
+              await setSelectedDevice(null);
+              return;
+            }
+            // Find selected device
+            GnssDevice? device;
+            for (var d in devices) {
+              if (d.id == newValue) {
+                device = d;
+                break;
+              }
+            }
+            await setSelectedDevice(device);
+          },
+        ),
+      );
+    },
+  );
+}
+
+/// Refreshes the unified device list (BT + USB)
+Future<void> refreshUnifiedDeviceList() async {
+  await loadUnifiedDeviceList();
 }
