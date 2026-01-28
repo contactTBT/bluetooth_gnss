@@ -22,6 +22,7 @@ import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.content.Intent;
 import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbManager;
 import android.location.Location;
 import android.location.LocationManager;
 import android.location.LocationProvider;
@@ -96,6 +97,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     String m_bdaddr = "";
     boolean m_auto_reconnect = false;
     boolean m_secure_rfcomm = true;
+    UsbDevice m_last_usb_device = null;  // For USB auto-reconnect
     Class m_target_activity_class;
     int m_icon_id;
     int m_ntrip_cb_count;
@@ -391,6 +393,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     private UsbDevice m_pending_usb_device = null;
 
     private void connectUsbDevice(UsbDevice device) {
+        m_last_usb_device = device;  // Store for auto-reconnect
         m_usb_connecting_thread = new Thread() {
             public void run() {
                 try {
@@ -483,6 +486,62 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
         });
 
         deactivate_mock_location();
+
+        // Close NTRIP connection if active
+        if (m_ntrip_conn_mgr != null) {
+            log(TAG, "on_usb_disconnected: closing NTRIP connection");
+            try {
+                m_ntrip_conn_mgr.close();
+            } catch (Exception e) {
+                log(TAG, "on_usb_disconnected: exception closing NTRIP: " + e.getMessage());
+            }
+            m_ntrip_conn_mgr = null;
+        }
+        m_ntrip_cb_count = 0;
+        m_ntrip_cb_count_added_to_send_buffer = 0;
+
+        // Close USB manager to clean up resources
+        if (g_usb_mgr != null) {
+            log(TAG, "on_usb_disconnected: closing g_usb_mgr");
+            try {
+                g_usb_mgr.close();
+            } catch (Exception e) {
+                log(TAG, "on_usb_disconnected: exception closing g_usb_mgr: " + e.getMessage());
+            }
+            g_usb_mgr = null;
+        }
+
+        // Stop foreground service
+        stopForeground(true);
+        log(TAG, "on_usb_disconnected: cleanup complete");
+
+        // Auto-reconnect for USB if enabled and device still attached
+        if (m_auto_reconnect && m_last_usb_device != null) {
+            log(TAG, "on_usb_disconnected: auto-reconnect enabled, checking if device still attached");
+            // Check if device is still attached after a short delay
+            m_handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (m_last_usb_device == null || !m_auto_reconnect) {
+                        log(TAG, "USB auto-reconnect cancelled (auto_reconnect disabled or no device)");
+                        return;
+                    }
+                    // Check if device is still attached
+                    UsbManager usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
+                    if (usbManager != null) {
+                        java.util.HashMap<String, UsbDevice> deviceList = usbManager.getDeviceList();
+                        boolean deviceAttached = deviceList.containsKey(m_last_usb_device.getDeviceName());
+                        if (deviceAttached) {
+                            log(TAG, "USB auto-reconnect: device still attached, attempting reconnect");
+                            toast("USB Auto-Reconnect: Trying to connect...");
+                            startUsbConnection(m_last_usb_device);
+                        } else {
+                            log(TAG, "USB auto-reconnect: device no longer attached, skipping reconnect");
+                        }
+                    }
+                }
+            }, 3000); // Wait 3 seconds before auto-reconnect attempt
+        }
     }
 
     @Override

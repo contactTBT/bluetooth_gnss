@@ -6,7 +6,7 @@
 |-------|-------|
 | **Epic** | USB Serial GNSS Connectivity |
 | **Story ID** | 1.6 |
-| **Status** | Approved |
+| **Status** | Done |
 | **Priority** | High |
 | **Dependencies** | Story 1.5 |
 
@@ -20,19 +20,19 @@
 
 | # | Criterion | Status |
 |---|-----------|--------|
-| AC1 | NTRIP connection can be established while USB GNSS connection is active | |
-| AC2 | RTCM correction data from NTRIP is written to USB `OutputStream` | |
-| AC3 | GGA sentences are sent to NTRIP server (for VRS) using USB-received position | |
-| AC4 | NTRIP byte counters update correctly for USB connections | |
-| AC5 | NTRIP reconnection logic works with USB connection (same as Bluetooth) | |
+| AC1 | NTRIP connection can be established while USB GNSS connection is active | Done |
+| AC2 | RTCM correction data from NTRIP is written to USB `OutputStream` | Done |
+| AC3 | GGA sentences are sent to NTRIP server (for VRS) using USB-received position | Done |
+| AC4 | NTRIP byte counters update correctly for USB connections | Done |
+| AC5 | NTRIP reconnection logic works with USB connection (same as Bluetooth) | Done |
 
 ## Integration Verification
 
 | # | Verification | Status |
 |---|--------------|--------|
-| IV1 | NTRIP over Bluetooth continues to work unchanged | |
-| IV2 | RTK fix achieved with ZED-F9P via USB + NTRIP | |
-| IV3 | NTRIP disable/enable settings apply to USB connections | |
+| IV1 | NTRIP over Bluetooth continues to work unchanged | Done |
+| IV2 | RTK fix achieved with ZED-F9P via USB + NTRIP | Done |
+| IV3 | NTRIP disable/enable settings apply to USB connections | Done |
 
 ## Technical Notes
 
@@ -130,3 +130,39 @@ To verify RTK is working:
 
 - [ntrip_conn_mgr.java](../../android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/ntrip_conn_mgr.java)
 - PRD: [docs/prd.md](../prd.md)
+
+---
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Opus 4.5 (claude-opus-4-5-20251101)
+
+### File List
+
+| File | Action |
+|------|--------|
+| `android/.../bluetooth_gnss_service.java` | Modified - NTRIP callback sends data to USB via `g_usb_mgr.add_send_buffer()`, `m_all_ntrip_params_specified` flag set for USB connections |
+| `android/.../usb_conn_mgr.java` | Modified - Added `add_send_buffer()` method, output queue (`ConcurrentLinkedQueue`), and writer thread |
+| `android/.../queue_to_outputstream_writer_thread.java` | Created - Worker thread that polls queue and writes to OutputStream with flush() |
+| `android/.../MainActivity.java` | Modified - Pass all NTRIP parameters from Flutter instead of hardcoding `disable_ntrip=true` |
+| `lib/connect.dart` | Modified - `connectUsb()` passes full connection params including NTRIP settings |
+| `lib/channels.dart` | Modified - `connectUsb()` accepts `connectionParams` map |
+
+### Completion Notes
+
+- AC1: NTRIP connection established when USB connection is active - `m_all_ntrip_params_specified` flag initialized for USB path
+- AC2: RTCM data routed to USB via `g_usb_mgr.add_send_buffer(read_buff)` in NTRIP `on_read()` callback
+- AC3: GGA sentences use same mechanism (`m_last_gga_sentence`) regardless of connection type - works unchanged
+- AC4: `m_ntrip_cb_count` and `m_ntrip_cb_count_added_to_send_buffer` counters increment for USB writes
+- AC5: Same `ntrip_conn_mgr` handles reconnection logic for both BT and USB connections
+- IV1: Bluetooth NTRIP path unchanged - `g_rfcomm_mgr.add_send_buffer()` still used
+- IV2: User verified RTK fix achieved with USB + NTRIP (reported "Everything works")
+- IV3: NTRIP settings passed from Flutter to Android for USB connections
+
+### Change Log
+
+| Date | Change |
+|------|--------|
+| 2026-01-28 | Implementation completed as part of Story 1.7 bug fixes |

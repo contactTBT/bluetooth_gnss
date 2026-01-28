@@ -462,27 +462,36 @@ public class usb_conn_mgr implements Closeable {
         Log.d(TAG, "Readline thread started");
     }
 
+    private static final int CONNECTION_WATCHER_INTERVAL_MS = 500; // Check every 500ms for fast disconnect detection
+
     private void startConnectionWatcher() {
         m_conn_state_watcher = new Thread() {
             @Override
             public void run() {
+                Log.d(TAG, "Connection watcher thread started");
                 while (m_conn_state_watcher == this && !closed) {
                     try {
-                        Thread.sleep(3000);
+                        Thread.sleep(CONNECTION_WATCHER_INTERVAL_MS);
 
                         if (closed) {
                             break;
                         }
 
-                        if (!isConnected()) {
-                            throw new Exception("USB device disconnected");
+                        // Check if device is still attached
+                        if (!isDeviceStillAttached()) {
+                            Log.d(TAG, "Connection watcher: USB device detached");
+                            if (!closed && m_callback != null) {
+                                m_callback.on_usb_disconnected("USB cable removed");
+                                m_callback.on_readline_stream_closed();
+                            }
+                            break;
                         }
 
                     } catch (InterruptedException e) {
                         Log.d(TAG, "Connection watcher interrupted");
                         break;
                     } catch (Exception e) {
-                        Log.d(TAG, "Connection watcher detected disconnect: " + e.getMessage());
+                        Log.d(TAG, "Connection watcher exception: " + e.getMessage());
                         if (!closed && m_callback != null) {
                             m_callback.on_usb_disconnected(e.getMessage());
                             m_callback.on_readline_stream_closed();
@@ -490,6 +499,7 @@ public class usb_conn_mgr implements Closeable {
                         break;
                     }
                 }
+                Log.d(TAG, "Connection watcher thread ended");
             }
         };
         m_conn_state_watcher.start();
@@ -511,9 +521,30 @@ public class usb_conn_mgr implements Closeable {
 
     /**
      * Check if currently connected to a USB device.
+     * Also verifies the device is still physically attached.
      */
     public boolean isConnected() {
-        return !closed && m_usb_serial_port != null && m_usb_connection != null;
+        if (closed || m_usb_serial_port == null || m_usb_connection == null) {
+            return false;
+        }
+        // Also check if device is still physically attached
+        return isDeviceStillAttached();
+    }
+
+    /**
+     * Check if the USB device is still physically attached to the system.
+     */
+    private boolean isDeviceStillAttached() {
+        if (m_target_usb_device == null || m_usb_manager == null) {
+            return false;
+        }
+        try {
+            java.util.HashMap<String, UsbDevice> deviceList = m_usb_manager.getDeviceList();
+            return deviceList.containsKey(m_target_usb_device.getDeviceName());
+        } catch (Exception e) {
+            Log.d(TAG, "isDeviceStillAttached exception: " + e.getMessage());
+            return false;
+        }
     }
 
     /**

@@ -212,6 +212,7 @@ Future<void> connectUsb(GnssDevice device) async {
   Map<String, dynamic> connectionParams = {
     'device_cep': prefService.get('device_cep') ?? "5.0",
     'log_bt_rx_log_uri': logBtRxLogUri,
+    'reconnect': prefService.get('reconnect') ?? false,  // Auto-reconnect on disconnect
     'disable_ntrip': prefService.get('disable_ntrip') ?? false,
     'ntrip_host': prefService.get('ntrip_host'),
     'ntrip_port': prefService.get('ntrip_port'),
