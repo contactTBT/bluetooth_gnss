@@ -79,3 +79,16 @@ devenv.local.nix
 
 # pre-commit
 .pre-commit-config.yaml
+
+# Flutter generated
+.flutter-plugins-dependencies
+
+# Rust build artifacts
+rust/target/
+rust/Cargo.lock
+
+# Flutter Rust Bridge - cargokit (downloaded by flutter_rust_bridge_codegen integrate)
+rust_builder/cargokit/
+
+# Claude Code
+.claude/
