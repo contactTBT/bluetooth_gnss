@@ -170,3 +170,40 @@ Future<bool> isMockLocationEnabled() async {
   }
   return ret!;
 }
+
+/// Get list of connected USB serial devices.
+/// Returns a list of device info maps with keys:
+/// - deviceId: int
+/// - deviceName: String
+/// - vendorId: int
+/// - productId: int
+/// - manufacturerName: String
+/// - productName: String
+/// - serialNumber: String
+/// - driverType: String
+/// - portCount: int
+Future<List<Map<String, dynamic>>> getUsbDevices() async {
+  List<Map<String, dynamic>> ret = [];
+  try {
+    var result = await methodChannel.invokeMethod<List<dynamic>>('getUsbDevices');
+    if (result != null) {
+      ret = result.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+    }
+  } catch (e, trace) {
+    String status = "getUsbDevices exception: '${e}': $trace";
+    developer.log(status);
+  }
+  return ret;
+}
+
+/// Check if USB host mode is supported on this device.
+Future<bool> isUsbHostSupported() async {
+  bool? ret = false;
+  try {
+    ret = await methodChannel.invokeMethod<bool>('isUsbHostSupported');
+  } catch (e, trace) {
+    String status = "isUsbHostSupported exception: '${e}': $trace";
+    developer.log(status);
+  }
+  return ret ?? false;
+}

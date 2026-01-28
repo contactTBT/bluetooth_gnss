@@ -25,8 +25,11 @@ import android.net.Uri;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import android.hardware.usb.UsbDevice;
+
 import com.clearevo.libbluetooth_gnss_service.Log;
 import com.clearevo.libbluetooth_gnss_service.RealLocationHelper;
+import com.clearevo.libbluetooth_gnss_service.UsbDeviceManager;
 import com.clearevo.libbluetooth_gnss_service.bluetooth_gnss_service;
 import com.clearevo.libbluetooth_gnss_service.ntrip_conn_mgr;
 import com.clearevo.libbluetooth_gnss_service.rfcomm_conn_mgr;
@@ -65,6 +68,9 @@ public static final String APPLICATION_ID = "com.clearevo.bluetooth_gnss";
     final int MESSAGE_PARAMS_MAP = 0;
     final int MESSAGE_SETTINGS_MAP = 1;
     final int MESSAGE_DEVICE_MESSAGE = 2;
+    final int MESSAGE_USB_EVENT = 3;
+
+    UsbDeviceManager usbDeviceManager;
 
     public static Location lastInternalGNSSLocation;
     boolean internalGNSSLocationSubscribed = false;
@@ -308,6 +314,18 @@ public static final String APPLICATION_ID = "com.clearevo.bluetooth_gnss";
                                         return_success_val = false;
                                     }
 
+                                } else if (call.method.equals("getUsbDevices")) {
+                                    if (usbDeviceManager != null) {
+                                        return_success_val = usbDeviceManager.getUsbDevices();
+                                    } else {
+                                        return_success_val = new ArrayList<>();
+                                    }
+                                } else if (call.method.equals("isUsbHostSupported")) {
+                                    if (usbDeviceManager != null) {
+                                        return_success_val = usbDeviceManager.isUsbHostSupported();
+                                    } else {
+                                        return_success_val = false;
+                                    }
                                 } else if (call.method.equals("is_coarse_location_enabled")) {
 
                                     Log.d(TAG, "is_coarse_location_enabled 0");
@@ -358,6 +376,39 @@ public static final String APPLICATION_ID = "com.clearevo.bluetooth_gnss";
                 );
 
         create();
+        initUsbDeviceManager();
+    }
+
+    private void initUsbDeviceManager() {
+        usbDeviceManager = new UsbDeviceManager(getApplicationContext());
+        usbDeviceManager.setListener(new UsbDeviceManager.UsbEventListener() {
+            @Override
+            public void onUsbDeviceAttached(UsbDevice device) {
+                Log.d(TAG, "USB device attached: " + device.getDeviceName());
+                sendUsbEvent("attached", device);
+            }
+
+            @Override
+            public void onUsbDeviceDetached(UsbDevice device) {
+                Log.d(TAG, "USB device detached: " + device.getDeviceName());
+                sendUsbEvent("detached", device);
+            }
+        });
+    }
+
+    private void sendUsbEvent(String eventType, UsbDevice device) {
+        if (m_handler == null) return;
+
+        ConcurrentHashMap<String, Object> eventMap = new ConcurrentHashMap<>();
+        eventMap.put("callback_src", "usb_device_event");
+        eventMap.put("event_type", eventType);
+        eventMap.put("deviceId", device.getDeviceId());
+        eventMap.put("deviceName", device.getDeviceName());
+        eventMap.put("vendorId", device.getVendorId());
+        eventMap.put("productId", device.getProductId());
+
+        Message msg = m_handler.obtainMessage(MESSAGE_USB_EVENT, eventMap);
+        msg.sendToTarget();
     }
 
 
@@ -450,6 +501,18 @@ D/btgnss_mainactvty(15208): 	at com.clearevo.bluetooth_gnss.MainActivity$1.handl
                         }
                     } catch (Exception e) {
                         Log.d(TAG, "handlemessage MESSAGE_SETTINGS_MAP exception: " + Log.getStackTraceString(e));
+                    }
+                } else if (inputMessage.what == MESSAGE_USB_EVENT) {
+                    Log.d(TAG, "mainactivity handler got USB event");
+                    try {
+                        if (m_settings_events_sink == null) {
+                            Log.d(TAG, "m_settings_events_sink == null so not delivering USB event");
+                        } else {
+                            Object params_map = inputMessage.obj;
+                            m_settings_events_sink.success(params_map);
+                        }
+                    } catch (Exception e) {
+                        Log.d(TAG, "handlemessage MESSAGE_USB_EVENT exception: " + Log.getStackTraceString(e));
                     }
                 }
             }
@@ -585,6 +648,11 @@ D/btgnss_mainactvty(15208): 	at com.clearevo.bluetooth_gnss.MainActivity$1.handl
         // Bind to LocalService
         Intent intent = new Intent(this, bluetooth_gnss_service.class);
         bindService(intent, connection, Context.BIND_AUTO_CREATE);
+
+        // Register USB receiver
+        if (usbDeviceManager != null) {
+            usbDeviceManager.registerReceiver();
+        }
     }
 
 
@@ -595,6 +663,10 @@ D/btgnss_mainactvty(15208): 	at com.clearevo.bluetooth_gnss.MainActivity$1.handl
         unbindService(connection);
         mBound = false;
 
+        // Unregister USB receiver
+        if (usbDeviceManager != null) {
+            usbDeviceManager.unregisterReceiver();
+        }
     }
 
     @Override

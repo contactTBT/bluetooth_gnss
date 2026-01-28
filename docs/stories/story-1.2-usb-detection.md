@@ -6,7 +6,7 @@
 |-------|-------|
 | **Epic** | USB Serial GNSS Connectivity |
 | **Story ID** | 1.2 |
-| **Status** | Draft |
+| **Status** | Done |
 | **Priority** | High |
 | **Dependencies** | Story 1.1 |
 
@@ -95,3 +95,36 @@ static Future<List<Map<String, dynamic>>> getUsbDevices() async {
 
 - [usb-serial-for-android device detection](https://github.com/mik3y/usb-serial-for-android#device-detection)
 - PRD: [docs/prd.md](../prd.md)
+
+---
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Opus 4.5 (claude-opus-4-5-20251101)
+
+### File List
+
+| File | Action |
+|------|--------|
+| `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/UsbDeviceManager.java` | Created - USB device enumeration and BroadcastReceiver |
+| `android/app/src/main/java/com/clearevo/bluetooth_gnss/MainActivity.java` | Modified - Added USB platform channel and receiver registration |
+| `lib/channels.dart` | Modified - Added getUsbDevices() and isUsbHostSupported() methods |
+
+### Completion Notes
+
+- AC1: USB serial device detection implemented using usb-serial-for-android UsbSerialProber
+- AC2: Device info includes deviceId, deviceName, vendorId, productId, manufacturerName, productName, serialNumber, driverType, portCount
+- AC3: BroadcastReceiver registered for USB_DEVICE_ATTACHED and USB_DEVICE_DETACHED with API 33+ RECEIVER_NOT_EXPORTED flag
+- AC4: USB events sent to Flutter via settings event channel with callback_src "usb_device_event"
+- AC5: Platform channel methods `getUsbDevices()` and `isUsbHostSupported()` implemented
+- Build succeeds: `flutter build apk` produces 56.1MB APK
+- All existing Flutter tests pass (2/2)
+- IV1/IV2/IV3 require manual device verification
+
+### Change Log
+
+| Date | Change |
+|------|--------|
+| 2026-01-28 | Initial implementation - USB device detection and enumeration complete |
