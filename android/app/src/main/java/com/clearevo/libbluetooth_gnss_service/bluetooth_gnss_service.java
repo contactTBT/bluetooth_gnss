@@ -1078,7 +1078,9 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     String time_str = convertUnixTimeStampToSQLDateTime(new_ts);
                     object.put("time", time_str);
                     //d(TAG, "time: "+time_str);
-                    setMock(lat, lon, (float) accuracy, (float) vaccuracy, float_height_m, heading_degrees, (float) float_speed_kmh, false, satellite_count_used, hdop, "QSTARZ_BLE", new_ts);
+                    String fix_quality = null;
+                    try { fix_quality = object.getString("fix_quality_matched"); } catch (Exception e) {}
+                    setMock(lat, lon, (float) accuracy, (float) vaccuracy, float_height_m, heading_degrees, (float) float_speed_kmh, false, satellite_count_used, hdop, "QSTARZ_BLE", new_ts, fix_quality);
                 }
                 HashMap<String, Object> param_map = m_gnss_parser.getM_parsed_params_hashmap();
                 HashMap<String, Object> qstarz_param_map = jsonToMap(object);
@@ -1501,7 +1503,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     public static final float DEFAULT_MOCK_ACCURACY = 5.0f;
     String[] providers_to_mock = new String[] {FUSED_PROVIDER, GPS_PROVIDER};
 
-    private void setMock(double latitude, double longitude, float accuracy, float vaccuracy, double altitude, double bearing_degrees, float speed_m_s, boolean alt_is_elipsoidal, int n_sats, double hdop, String talker, long gnss_ts) {
+    private void setMock(double latitude, double longitude, float accuracy, float vaccuracy, double altitude, double bearing_degrees, float speed_m_s, boolean alt_is_elipsoidal, int n_sats, double hdop, String talker, long gnss_ts, String fix_quality) {
         if (closing) {
             d(TAG, "setmock ignore as already closing");
             return;
@@ -1641,6 +1643,8 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
             try {jo.put("longitude", longitude);} catch (Exception e) {}
             try {jo.put("altitude", altitude);} catch (Exception e) {}
             try {jo.put("accuracy", accuracy);} catch (Exception e) {}
+            try {jo.put("vertical_accuracy", vaccuracy);} catch (Exception e) {}
+            try {jo.put("fix_status", fix_quality);} catch (Exception e) {}
             try {jo.put("bearing", mock_bearing);} catch (Exception e) {}
             try {jo.put("speed_m_s", speed_m_s);} catch (Exception e) {}
             try {jo.put("n_sats", n_sats);} catch (Exception e) {}
@@ -1982,7 +1986,9 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                         if (Double.isNaN(vaccuracy)) {
                             vaccuracy = vdop * get_connected_device_CEP();
                         }
-                        setMock(lat, lon, (float) accuracy, (float) vaccuracy, alt, bearing, (float) speed, alt_is_ellipsoidal, n_sats, hdop, talker, new_ts);
+                        String fix_quality = null;
+                        try { fix_quality = (String) params_map.get(talker + "_fix_quality"); } catch (Exception e) {}
+                        setMock(lat, lon, (float) accuracy, (float) vaccuracy, alt, bearing, (float) speed, alt_is_ellipsoidal, n_sats, hdop, talker, new_ts, fix_quality);
                         break;
                     } else {
                         //omit as same ts as last

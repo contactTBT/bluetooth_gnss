@@ -7,7 +7,7 @@
 | **Epic** | External Integration Support |
 | **Story ID** | 1.10 |
 | **Type** | Brownfield Enhancement |
-| **Status** | Draft |
+| **Status** | Ready for Review |
 | **Priority** | Medium |
 | **Dependencies** | None (uses existing broadcast infrastructure) |
 
@@ -147,11 +147,11 @@ Both values are already extracted in `onPositionUpdate()` method:
 
 ## Definition of Done
 
-- [ ] `fix_status` field added to POSITION_UPDATE broadcast
-- [ ] `vertical_accuracy` field added to POSITION_UPDATE broadcast
-- [ ] Data correctly sourced from existing parsed values
-- [ ] Existing broadcast fields unchanged
-- [ ] Code follows existing pattern (try/catch wrapped jo.put)
+- [x] `fix_status` field added to POSITION_UPDATE broadcast
+- [x] `vertical_accuracy` field added to POSITION_UPDATE broadcast
+- [x] Data correctly sourced from existing parsed values
+- [x] Existing broadcast fields unchanged
+- [x] Code follows existing pattern (try/catch wrapped jo.put)
 - [ ] Tested with broadcast receiver (verify JSON output)
 - [ ] No regression in mock location functionality
 
@@ -179,8 +179,44 @@ Both values are already extracted in `onPositionUpdate()` method:
 **Risk:** Low (additive change, follows existing pattern)
 **Complexity:** Minimal (data already available, just needs to be added to broadcast)
 
+## Tasks
+
+- [x] Task 1: Add `fix_status` field to POSITION_UPDATE broadcast JSON
+- [x] Task 2: Add `vertical_accuracy` field to POSITION_UPDATE broadcast JSON
+- [x] Task 3: Verify data is correctly sourced from existing parsed values
+- [ ] Task 4: Test broadcast output contains new fields
+
 ## References
 
 - Service file: `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/bluetooth_gnss_service.java`
 - Parser file: `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/gnss_sentence_parser.java`
 - Broadcast action: `com.clearevo.libbluetooth_gnss_service.POSITION_UPDATE`
+
+---
+
+## Dev Agent Record
+
+### Agent Model Used
+- Claude Opus 4.5
+
+### File List
+| File | Action | Description |
+|------|--------|-------------|
+| android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/bluetooth_gnss_service.java | Modified | Added fix_quality parameter to setMock(), added vertical_accuracy and fix_status to broadcast JSON |
+
+### Change Log
+| Change | Details |
+|--------|---------|
+| Added fix_quality parameter to setMock() | Line 1506: Method signature extended with `String fix_quality` |
+| Added vertical_accuracy to broadcast | Line 1646: `jo.put("vertical_accuracy", vaccuracy)` |
+| Added fix_status to broadcast | Line 1647: `jo.put("fix_status", fix_quality)` |
+| Updated QSTARZ_BLE caller | Lines 1081-1083: Extract fix_quality_matched and pass to setMock |
+| Updated NMEA caller | Lines 1989-1991: Extract talker_fix_quality and pass to setMock |
+
+### Debug Log References
+- None
+
+### Completion Notes
+- Implementation complete - code changes follow existing patterns exactly
+- Both NMEA and QSTARZ_BLE paths updated to pass fix_quality
+- Manual testing required to verify broadcast output (Task 4)
