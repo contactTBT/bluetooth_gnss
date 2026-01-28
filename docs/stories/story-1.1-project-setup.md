@@ -6,7 +6,7 @@
 |-------|-------|
 | **Epic** | USB Serial GNSS Connectivity |
 | **Story ID** | 1.1 |
-| **Status** | Draft |
+| **Status** | Done |
 | **Priority** | High |
 | **Dependencies** | None |
 
@@ -81,3 +81,36 @@ dependencies {
 - [usb-serial-for-android GitHub](https://github.com/mik3y/usb-serial-for-android)
 - [Android USB Host API](https://developer.android.com/develop/connectivity/usb/host)
 - PRD: [docs/prd.md](../prd.md)
+
+---
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Opus 4.5 (claude-opus-4-5-20251101)
+
+### File List
+
+| File | Action |
+|------|--------|
+| `android/build.gradle` | Modified - Added JitPack repository |
+| `android/app/build.gradle` | Modified - Added usb-serial-for-android dependency |
+| `android/app/src/main/AndroidManifest.xml` | Modified - Added USB host feature and intent filter |
+| `android/app/src/main/res/xml/device_filter.xml` | Created - USB device filter for common GNSS serial chips |
+
+### Completion Notes
+
+- All acceptance criteria AC1-AC5 implemented
+- JitPack repository added to project-level build.gradle for usb-serial-for-android dependency
+- USB host feature declared with `required="false"` for compatibility with non-OTG devices
+- device_filter.xml includes common GNSS USB serial chip vendors (FTDI, CP210x, PL2303, CH340, u-blox, CDC ACM)
+- Build succeeds: `flutter build apk` produces 56.1MB APK
+- All existing Flutter tests pass (2/2)
+- IV1/IV2/IV3 require manual device verification (Bluetooth flow unchanged, no code regression)
+
+### Change Log
+
+| Date | Change |
+|------|--------|
+| 2026-01-28 | Initial implementation - USB serial library integration complete |
