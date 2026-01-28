@@ -4,7 +4,8 @@
       "Skill(BMad:agents:architect)",
       "Skill(BMad:agents:architect:*)",
       "Bash(flutter build:*)",
-      "Bash(flutter test)"
+      "Bash(flutter test)",
+      "Bash(grep:*)"
     ]
   }
 }
