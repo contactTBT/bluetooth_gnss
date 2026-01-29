@@ -402,6 +402,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     g_usb_mgr.connectWithAutoDetect(device);
                 } catch (final Exception e) {
                     log(TAG, "USB connect exception: " + getStackTraceString(e));
+                    broadcastDisconnect("USB Connect failed: " + e.getMessage());
                     m_handler.post(new Runnable() {
                         @Override
                         public void run() {
@@ -1131,6 +1132,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     log(TAG, "rfcomm connect to dev");
                     g_rfcomm_mgr.connect();
                 } catch (final Exception e) {
+                    broadcastDisconnect("Connect failed: " + e.toString());
                     m_handler.post(
                             new Runnable() {
                                 @Override

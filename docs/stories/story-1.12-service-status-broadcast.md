@@ -1,4 +1,4 @@
-# Story 1.12: Service Status Broadcast - Brownfield Addition
+# Story 1.12: Connection Error Broadcast - Brownfield Addition
 
 ## Story Info
 
@@ -7,15 +7,15 @@
 | **Epic** | External Integration Support |
 | **Story ID** | 1.12 |
 | **Type** | Brownfield Enhancement |
-| **Status** | Ready |
+| **Status** | Ready for Testing |
 | **Priority** | Medium |
 | **Dependencies** | Story 1.11 (Disconnect Broadcast) |
 
 ## User Story
 
 **As a** third-party app developer launching bluetooth_gnss service,
-**I want** to receive broadcast notifications about service status changes and errors,
-**So that** my app can react to connection failures, NTRIP errors, and other service events without needing the bluetooth_gnss UI.
+**I want** to receive a POSITION_UPDATE broadcast with `fix_status: "Invalid"` when connection fails,
+**So that** my app can react to connection failures without needing the bluetooth_gnss UI.
 
 ## Story Context
 
@@ -25,28 +25,38 @@
 |--------|---------|
 | **Integrates with** | `bluetooth_gnss_service.java` error handling and connection flow |
 | **Technology** | Android Intent broadcast with JSON payload |
-| **Follows pattern** | Existing POSITION_UPDATE broadcast mechanism |
-| **Touch points** | Connection handlers, error handlers, NTRIP connection |
+| **Follows pattern** | Story 1.11 disconnect broadcast mechanism |
+| **Touch points** | USB connect catch block, BT connect catch block |
 
 ### Current Behavior
 
-When errors occur:
+When connection fails:
 - Logged to logcat
 - Toast shown (only visible if bluetooth_gnss UI is in foreground)
 - Notification updated
-- **No broadcast sent** - third-party apps have no way to know about failures
+- **No broadcast sent** - third-party apps have no way to know about connection failures
 
 ### Enhanced Behavior
 
-Broadcast a SERVICE_STATUS intent for key events:
+On connection failure, broadcast a POSITION_UPDATE with `fix_status: "Invalid"` (same format as story 1.11 disconnect broadcast):
 ```json
 {
-  "status": "error",
-  "error_type": "connection",
-  "message": "Connect failed: device not found",
-  "timestamp": 1704067200000
+  "java_ts": 1704067200000,
+  "system_ts": 1704067200000,
+  "gnss_ts": 0,
+  "latitude": 0.0,
+  "longitude": 0.0,
+  "altitude": 0.0,
+  "accuracy": 0.0,
+  "vertical_accuracy": 0.0,
+  "fix_status": "Invalid",
+  "bearing": 0.0,
+  "speed_m_s": 0.0,
+  "n_sats": 0
 }
 ```
+
+This reuses the `broadcastDisconnect()` method from story 1.11. Third-party apps can use the same broadcast receiver and check `fix_status: "Invalid"` to detect both disconnections and connection failures.
 
 ## Acceptance Criteria
 
@@ -54,173 +64,78 @@ Broadcast a SERVICE_STATUS intent for key events:
 
 | # | Criterion | Status |
 |---|-----------|--------|
-| AC1 | New `SERVICE_STATUS` broadcast intent action defined | |
-| AC2 | Broadcast sent on successful connection with `status: "connected"` | |
-| AC3 | Broadcast sent on connection failure with `status: "error"` and error details | |
-| AC4 | Broadcast sent on NTRIP connection success/failure | |
-| AC5 | Broadcast sent when service starts with `status: "connecting"` | |
-
-### Status Values
-
-| Status | When Sent |
-|--------|-----------|
-| `connecting` | Service started, attempting connection |
-| `connected` | Successfully connected to GNSS device |
-| `error` | Connection or NTRIP failure |
-| `ntrip_connected` | NTRIP caster connection established |
-| `ntrip_error` | NTRIP connection failed |
-| `disconnected` | Device disconnected (complement to story 1.11) |
-
-### Error Types
-
-| Error Type | Description |
-|------------|-------------|
-| `connection` | Bluetooth/USB connection failure |
-| `permission` | Missing permissions |
-| `ntrip` | NTRIP caster connection failure |
-| `device_not_found` | Target device not found |
-| `service` | General service error |
+| AC1 | USB connection failure triggers POSITION_UPDATE broadcast with `fix_status: "Invalid"` | Done |
+| AC2 | Bluetooth connection failure triggers POSITION_UPDATE broadcast with `fix_status: "Invalid"` | Done |
+| AC3 | Broadcast uses same format as story 1.11 (same fields as normal position updates) | Done |
 
 ### Integration Requirements
 
 | # | Criterion | Status |
 |---|-----------|--------|
-| IR1 | Existing POSITION_UPDATE broadcast unchanged | |
-| IR2 | Existing error handling (toast, notification) unchanged | |
-| IR3 | Third-party apps can register for SERVICE_STATUS broadcast | |
+| IR1 | Existing POSITION_UPDATE broadcast format unchanged for normal position updates | Done |
+| IR2 | Existing error handling (toast, notification) unchanged | Done |
+| IR3 | Reuses story 1.11's `broadcastDisconnect()` method | Done |
 
 ## Technical Notes
 
 ### Implementation Approach
 
-Add a new broadcast intent action and helper method:
+Reuse the `broadcastDisconnect(String reason)` method from story 1.11 and call it from connection error handlers:
 
 ```java
-// New intent action
-public static final String SERVICE_STATUS_INTENT_ACTION =
-    "com.clearevo.libbluetooth_gnss_service.SERVICE_STATUS";
+// In USB connect catch block
+} catch (final Exception e) {
+    log(TAG, "USB connect exception: " + getStackTraceString(e));
+    broadcastDisconnect("USB Connect failed: " + e.getMessage());
+    // ... existing toast and notification code
+}
 
-// Helper method
-private void broadcastServiceStatus(String status, String errorType, String message) {
-    try {
-        Intent intent = new Intent();
-        intent.setAction(SERVICE_STATUS_INTENT_ACTION);
-        JSONObject jo = new JSONObject();
-        long ts = System.currentTimeMillis();
-        try { jo.put("status", status); } catch (Exception e) {}
-        try { jo.put("timestamp", ts); } catch (Exception e) {}
-        if (errorType != null) {
-            try { jo.put("error_type", errorType); } catch (Exception e) {}
-        }
-        if (message != null) {
-            try { jo.put("message", message); } catch (Exception e) {}
-        }
-        intent.putExtra(INTENT_EXTRA_DATA_JSON_KEY, jo.toString());
-        getApplicationContext().sendBroadcast(intent);
-        log(TAG, "broadcastServiceStatus: " + status + ", " + errorType + ", " + message);
-    } catch (Throwable tr) {
-        log(TAG, "WARNING: broadcastServiceStatus failed: " + getStackTraceString(tr));
-    }
+// In BT connect catch block
+} catch (final Exception e) {
+    broadcastDisconnect("Connect failed: " + e.toString());
+    // ... existing toast and notification code
 }
 ```
 
 ### Integration Points
 
-| Location | Event | Status | Error Type |
-|----------|-------|--------|------------|
-| `onStartCommand()` | Service starting | `connecting` | - |
-| After successful BT connect | Connected | `connected` | - |
-| After successful USB connect | Connected | `connected` | - |
-| BT connect catch block | Failure | `error` | `connection` |
-| USB connect catch block | Failure | `error` | `connection` |
-| `connect_ntrip()` success | NTRIP connected | `ntrip_connected` | - |
-| `connect_ntrip()` failure | NTRIP failed | `ntrip_error` | `ntrip` |
-| `on_usb_error()` | USB error | `error` | `connection` |
-
-### Broadcast JSON Examples
-
-**Connecting:**
-```json
-{
-  "status": "connecting",
-  "timestamp": 1704067200000
-}
-```
-
-**Connected:**
-```json
-{
-  "status": "connected",
-  "timestamp": 1704067200000
-}
-```
-
-**Connection Error:**
-```json
-{
-  "status": "error",
-  "error_type": "connection",
-  "message": "Connect failed: device not found",
-  "timestamp": 1704067200000
-}
-```
-
-**NTRIP Connected:**
-```json
-{
-  "status": "ntrip_connected",
-  "timestamp": 1704067200000
-}
-```
-
-**NTRIP Error:**
-```json
-{
-  "status": "ntrip_error",
-  "error_type": "ntrip",
-  "message": "NTRIP connection failed: host unreachable",
-  "timestamp": 1704067200000
-}
-```
+| Location | Event | Broadcast |
+|----------|-------|-----------|
+| USB connect catch block | USB connection failed | `fix_status: "Invalid"` |
+| BT connect catch block | Bluetooth connection failed | `fix_status: "Invalid"` |
 
 ## Third-Party App Usage
 
 ```java
-// Register receiver
+// Register receiver (same as story 1.11)
 IntentFilter filter = new IntentFilter();
-filter.addAction("com.clearevo.libbluetooth_gnss_service.SERVICE_STATUS");
 filter.addAction("com.clearevo.libbluetooth_gnss_service.POSITION_UPDATE");
 registerReceiver(myReceiver, filter);
 
 // Handle in receiver
 @Override
 public void onReceive(Context context, Intent intent) {
-    String action = intent.getAction();
     String json = intent.getStringExtra("data_json");
     JSONObject data = new JSONObject(json);
 
-    if ("SERVICE_STATUS".equals(action)) {
-        String status = data.getString("status");
-        if ("error".equals(status)) {
-            String errorType = data.optString("error_type");
-            String message = data.optString("message");
-            // Handle error
-        } else if ("connected".equals(status)) {
-            // Connection successful
-        }
+    String fixStatus = data.optString("fix_status", "");
+    if ("Invalid".equals(fixStatus)) {
+        // Connection failed or disconnected - no valid position available
+        // Update UI to show "No GPS" or similar
+    } else {
+        // Valid position update
+        double lat = data.getDouble("latitude");
+        double lon = data.getDouble("longitude");
+        // ... use position data
     }
 }
 ```
 
 ## Definition of Done
 
-- [ ] `SERVICE_STATUS_INTENT_ACTION` constant defined
-- [ ] `broadcastServiceStatus()` helper method implemented
-- [ ] Broadcast sent on service start (`connecting`)
-- [ ] Broadcast sent on successful connection (`connected`)
-- [ ] Broadcast sent on connection failure (`error`)
-- [ ] Broadcast sent on NTRIP success/failure
-- [ ] Broadcast sent on USB error
+- [x] USB connection failure broadcasts Invalid fix status
+- [x] Bluetooth connection failure broadcasts Invalid fix status
+- [x] Reuses existing `broadcastDisconnect()` method
 - [ ] Tested with broadcast receiver
 - [ ] No regression in existing functionality
 
@@ -230,44 +145,46 @@ public void onReceive(Context context, Intent intent) {
 
 | Test Case | Expected Result | Status |
 |-----------|-----------------|--------|
-| Start service | Broadcast `status: "connecting"` received | |
-| Successful BT connection | Broadcast `status: "connected"` received | |
-| Successful USB connection | Broadcast `status: "connected"` received | |
-| BT device not found | Broadcast `status: "error"`, `error_type: "connection"` received | |
-| NTRIP connection success | Broadcast `status: "ntrip_connected"` received | |
-| NTRIP connection failure | Broadcast `status: "ntrip_error"` received | |
-| USB error | Broadcast `status: "error"` received | |
+| USB device not available | Broadcast received with `fix_status: "Invalid"` | |
+| Bluetooth device not found | Broadcast received with `fix_status: "Invalid"` | |
+| Bluetooth device out of range | Broadcast received with `fix_status: "Invalid"` | |
+| Normal position updates | `fix_status` contains actual fix quality (RTK, DGPS, etc.) - unchanged | |
 
 ## Tasks
 
-- [ ] Task 1: Define `SERVICE_STATUS_INTENT_ACTION` constant
-- [ ] Task 2: Create `broadcastServiceStatus()` helper method
-- [ ] Task 3: Add broadcast on service start (`connecting`)
-- [ ] Task 4: Add broadcast on successful connection (`connected`)
-- [ ] Task 5: Add broadcast on connection failure (`error`)
-- [ ] Task 6: Add broadcast on NTRIP events
-- [ ] Task 7: Add broadcast on USB error
-- [ ] Task 8: Test all broadcast scenarios
+- [x] Task 1: Add `broadcastDisconnect()` call to USB connect catch block
+- [x] Task 2: Add `broadcastDisconnect()` call to BT connect catch block
+- [ ] Task 3: Test all error broadcast scenarios
 
 ## References
 
 - Service file: `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/bluetooth_gnss_service.java`
 - Story 1.11: [story-1.11-disconnect-broadcast.md](story-1.11-disconnect-broadcast.md)
-- Broadcast action: `com.clearevo.libbluetooth_gnss_service.SERVICE_STATUS`
+- Broadcast action: `com.clearevo.libbluetooth_gnss_service.POSITION_UPDATE`
 
 ---
 
 ## Dev Agent Record
 
 ### Agent Model Used
-- (To be filled on implementation)
+- Claude Opus 4.5 (claude-opus-4-5-20251101)
 
 ### File List
 | File | Action | Description |
 |------|--------|-------------|
-| (To be filled on implementation) | | |
+| `android/.../bluetooth_gnss_service.java` | Modified | Added `broadcastDisconnect()` calls to USB and BT connect error handlers |
+
+### Implementation Details
+
+**Reused `broadcastDisconnect(String reason)` method from story 1.11**
+
+**Integration points added:**
+- USB connect catch block (line ~405): `broadcastDisconnect("USB Connect failed: " + e.getMessage())`
+- BT connect catch block (line ~1134): `broadcastDisconnect("Connect failed: " + e.toString())`
 
 ### Change Log
 | Date | Change |
 |------|--------|
 | 2026-01-29 | Story created |
+| 2026-01-29 | Story simplified - reuse POSITION_UPDATE with Invalid fix_status instead of separate SERVICE_STATUS |
+| 2026-01-29 | Implementation complete - added broadcastDisconnect calls to connection error handlers |
