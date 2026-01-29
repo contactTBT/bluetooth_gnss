@@ -392,6 +392,7 @@ public static final String APPLICATION_ID = "com.clearevo.bluetooth_gnss";
                                                         if (ntripPass != null) args.put("ntrip_pass", ntripPass);
 
                                                         Log.d(TAG, "connectUsb args: " + args);
+                                                        Util.save_connect_args(context, args); // Save USB connection args for autostart/reload
                                                         intent.putExtra("args", args);
                                                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                                             context.startForegroundService(intent);
