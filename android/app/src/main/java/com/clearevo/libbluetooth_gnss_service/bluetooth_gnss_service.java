@@ -182,6 +182,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
         log(TAG, "onStartCommand");
         Log.logObserver = this;
         closing = false;
+        m_disconnect_broadcast_sent = false;
 
         curInstance = this;
 
@@ -475,6 +476,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     @Override
     public void on_usb_disconnected(String reason) {
         log(TAG, "on_usb_disconnected: " + reason);
+        broadcastDisconnect(reason);
         m_connection_type = ConnectionType.NONE;
 
         m_handler.post(new Runnable() {
@@ -811,6 +813,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
 
 
     boolean closing = false;
+    boolean m_disconnect_broadcast_sent = false;
     //return true if was connected
     public boolean close() {
         closing = true;
@@ -837,6 +840,11 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                 log(TAG, "close() g_usb_mgr exception: " + getStackTraceString(e));
             }
             g_usb_mgr = null;
+        }
+
+        // Broadcast disconnect if we were connected and haven't already broadcast
+        if (was_connected) {
+            broadcastDisconnect("Connection closed");
         }
 
         m_connection_type = ConnectionType.NONE;
@@ -944,6 +952,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     public void on_rfcomm_disconnected()
     {
         log(TAG, "on_rfcomm_disconnected() m_auto_reconnect: "+m_auto_reconnect);
+        broadcastDisconnect("Bluetooth disconnected");
         m_handler.post(
                 new Runnable() {
                     @Override
@@ -1706,6 +1715,44 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
             } catch (Exception e) {
                 log(TAG, "WARNING: write bt rx file exceptionn: "+Log.getStackTraceString(e));
             }
+        }
+    }
+
+    /**
+     * Broadcast Invalid fix status when disconnection occurs.
+     * This allows third-party apps to react to loss of position data.
+     * Uses same format as normal POSITION_UPDATE broadcast with fix_status = "Invalid".
+     * NMEA GGA standard: fix quality 0 = "Invalid" (no position available).
+     */
+    private void broadcastDisconnect(String reason) {
+        if (m_disconnect_broadcast_sent) {
+            log(TAG, "broadcastDisconnect: already sent, skipping");
+            return;
+        }
+        try {
+            Intent intent = new Intent();
+            intent.setAction(POSITION_UPDATE_INTENT_ACTION);
+            JSONObject jo = new JSONObject();
+            long ts = System.currentTimeMillis();
+            // Same format as normal position broadcast, but with fix_status = "Invalid"
+            try { jo.put("java_ts", ts); } catch (Exception e) {}
+            try { jo.put("system_ts", ts); } catch (Exception e) {}
+            try { jo.put("gnss_ts", 0); } catch (Exception e) {}
+            try { jo.put("latitude", 0.0); } catch (Exception e) {}
+            try { jo.put("longitude", 0.0); } catch (Exception e) {}
+            try { jo.put("altitude", 0.0); } catch (Exception e) {}
+            try { jo.put("accuracy", 0.0); } catch (Exception e) {}
+            try { jo.put("vertical_accuracy", 0.0); } catch (Exception e) {}
+            try { jo.put("fix_status", "Invalid"); } catch (Exception e) {}
+            try { jo.put("bearing", 0.0); } catch (Exception e) {}
+            try { jo.put("speed_m_s", 0.0); } catch (Exception e) {}
+            try { jo.put("n_sats", 0); } catch (Exception e) {}
+            intent.putExtra(INTENT_EXTRA_DATA_JSON_KEY, jo.toString());
+            getApplicationContext().sendBroadcast(intent);
+            m_disconnect_broadcast_sent = true;
+            log(TAG, "broadcastDisconnect: sent Invalid fix_status, reason: " + reason);
+        } catch (Throwable tr) {
+            log(TAG, "WARNING: broadcastDisconnect failed: " + getStackTraceString(tr));
         }
     }
 
