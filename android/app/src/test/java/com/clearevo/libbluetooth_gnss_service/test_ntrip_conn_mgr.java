@@ -62,11 +62,10 @@ public class test_ntrip_conn_mgr implements ntrip_conn_callbacks{
             prop_mp = prop.getProperty("mountpoint");
         } catch (IOException ex) {
             //https://www.centipede-rtk.org/the-centipede-rtk-network
-            host = "caster.centipede.fr";
+            host = "crtk.net";
             port = 2101;
             user = "centipede";
             pass = "centipede";
-
         }
 
         String first_mount_point = null;
