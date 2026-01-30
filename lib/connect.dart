@@ -67,6 +67,15 @@ Future<void> loadUnifiedDeviceList() async {
 
   unifiedDeviceListNotifier.value = devices;
   developer.log('loadUnifiedDeviceList: ${devices.length} devices (BT+USB)');
+
+  // Auto-select previously selected device (works for USB with VID/PID matching)
+  GnssDevice? selected = getSelectedDevice();
+  if (selected != null) {
+    selectedDeviceNotifier.value = selected;
+    // Update target_device with current device ID (may have changed for USB)
+    await prefService.set('target_device', selected.id);
+    developer.log('loadUnifiedDeviceList: auto-selected ${selected.displayName}');
+  }
 }
 
 /// Get selected device from preferences
@@ -87,7 +96,30 @@ GnssDevice? getSelectedDevice() {
     return null;
   }
 
-  // Find device by unified ID
+  // Check if it's a USB device - match by VID/PID instead of deviceId
+  if (targetDevice.startsWith('usb_')) {
+    int savedVid = prefService.get('usb_vendor_id') ?? 0;
+    int savedPid = prefService.get('usb_product_id') ?? 0;
+    developer.log('getSelectedDevice: looking for USB VID=$savedVid PID=$savedPid');
+
+    if (savedVid > 0 && savedPid > 0) {
+      // Find USB device by VID/PID (stable identifiers)
+      for (var device in unifiedDeviceListNotifier.value) {
+        if (device.type == DeviceConnectionType.usb) {
+          int deviceVid = device.metadata['vendorId'] as int? ?? 0;
+          int devicePid = device.metadata['productId'] as int? ?? 0;
+          if (deviceVid == savedVid && devicePid == savedPid) {
+            developer.log('getSelectedDevice: found USB device by VID/PID: ${device.displayName}');
+            return device;
+          }
+        }
+      }
+      developer.log('getSelectedDevice: USB device with VID=$savedVid PID=$savedPid not connected');
+    }
+    return null;
+  }
+
+  // Find device by unified ID (for Bluetooth devices)
   for (var device in unifiedDeviceListNotifier.value) {
     if (device.id == targetDevice) {
       return device;
@@ -101,6 +133,8 @@ Future<void> setSelectedDevice(GnssDevice? device) async {
   if (device == null) {
     await prefService.set('target_device', '');
     await prefService.set('target_bdaddr', '');
+    await prefService.set('usb_vendor_id', 0);
+    await prefService.set('usb_product_id', 0);
     selectedDeviceNotifier.value = null;
     return;
   }
@@ -110,9 +144,17 @@ Future<void> setSelectedDevice(GnssDevice? device) async {
   // Also set target_bdaddr for backwards compatibility with BT devices
   if (device.type == DeviceConnectionType.bluetooth) {
     await prefService.set('target_bdaddr', device.bluetoothAddress ?? '');
+    // Clear USB IDs
+    await prefService.set('usb_vendor_id', 0);
+    await prefService.set('usb_product_id', 0);
   } else {
-    // Clear bdaddr if USB device selected
+    // USB device selected - save VID/PID for reconnection
     await prefService.set('target_bdaddr', '');
+    int vendorId = device.metadata['vendorId'] as int? ?? 0;
+    int productId = device.metadata['productId'] as int? ?? 0;
+    await prefService.set('usb_vendor_id', vendorId);
+    await prefService.set('usb_product_id', productId);
+    developer.log('setSelectedDevice: saved USB VID=$vendorId PID=$productId');
   }
 
   selectedDeviceNotifier.value = device;

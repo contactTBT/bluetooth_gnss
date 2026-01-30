@@ -190,4 +190,41 @@ public class UsbDeviceManager {
         }
         return null;
     }
+
+    /**
+     * Get a USB serial device by vendor ID and product ID.
+     * Only returns devices that are supported USB serial devices.
+     *
+     * @param vendorId The USB vendor ID
+     * @param productId The USB product ID
+     * @return The UsbDevice if found and supported, null otherwise
+     */
+    public UsbDevice getDeviceByVidPid(int vendorId, int productId) {
+        if (usbManager == null) {
+            Log.d(TAG, "getDeviceByVidPid: UsbManager is null");
+            return null;
+        }
+
+        // Use UsbSerialProber to find supported serial devices
+        List<UsbSerialDriver> availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager);
+        Log.d(TAG, "getDeviceByVidPid: searching for VID=" + vendorId + " PID=" + productId + " among " + availableDrivers.size() + " drivers");
+
+        for (UsbSerialDriver driver : availableDrivers) {
+            UsbDevice device = driver.getDevice();
+            if (device.getVendorId() == vendorId && device.getProductId() == productId) {
+                Log.d(TAG, "getDeviceByVidPid: found matching device: " + device.getDeviceName());
+                return device;
+            }
+        }
+
+        Log.d(TAG, "getDeviceByVidPid: no matching device found");
+        return null;
+    }
+
+    /**
+     * Get UsbManager instance.
+     */
+    public UsbManager getUsbManager() {
+        return usbManager;
+    }
 }

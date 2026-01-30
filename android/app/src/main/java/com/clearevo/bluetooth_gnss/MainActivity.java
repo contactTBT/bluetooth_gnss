@@ -341,6 +341,8 @@ public static final String APPLICATION_ID = "com.clearevo.bluetooth_gnss";
                                                         Intent intent = new Intent(context, bluetooth_gnss_service.class);
                                                         HashMap<String, Object> args = new HashMap<>();
                                                         args.put("bdaddr", "USB:" + device.getDeviceName());
+                                                        args.put("usb_vendor_id", device.getVendorId());
+                                                        args.put("usb_product_id", device.getProductId());
                                                         args.put("secure", true);
 
                                                         // Read reconnect parameter from Flutter (default false for backwards compatibility)

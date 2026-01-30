@@ -244,50 +244,78 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                 log(TAG, msg);
                 toast(msg);
             } else if (m_bdaddr.startsWith("USB:")) {
-                // USB connection - just start foreground, actual USB connect happens via startUsbConnection()
-                log(TAG, "USB connection requested, starting foreground service only");
-                start_foreground("Waiting for USB...", "device: " + m_bdaddr.substring(4), "");
-
-                // Set NTRIP params for USB connections (same logic as Bluetooth)
-                m_all_ntrip_params_specified = true;
-                try {
-                    for (String key : NTRIP_CONNECT_ARGS) {
-                        Object val = m_start_connect_args.get(key);
-                        if (val == null || (val instanceof String && ((String)val).isEmpty())) {
-                            log(TAG, "USB: key: " + key + " got null or empty string so m_all_ntrip_params_specified false");
-                            m_all_ntrip_params_specified = false;
-                            break;
-                        }
-                    }
-                } catch (Exception e) {
-                    log(TAG, "USB: WARNING: check m_all_ntrip_params_specified exception: " + Log.getStackTraceString(e));
-                    m_all_ntrip_params_specified = false;
+                // USB connection with auto-connect via VID/PID
+                log(TAG, "USB connection requested: " + m_bdaddr);
+                if (tryUsbAutoConnect(connectArgs)) {
+                    start_foreground("Connecting USB...", "device: " + m_bdaddr.substring(4), "");
+                    checkNtripParamsSpecified();
+                } else {
+                    // Must call start_foreground (Android requirement), then stop
+                    start_foreground("USB device not found", m_bdaddr.substring(4), "");
+                    stopSelf();
                 }
-                log(TAG, "USB: m_all_ntrip_params_specified: " + m_all_ntrip_params_specified);
             } else {
+                // Bluetooth connection
                 log(TAG, "onStartCommand got bdaddr");
                 int start_ret = connect(connectArgs, m_bdaddr, m_secure_rfcomm, getApplicationContext());
                 if (start_ret == 0) {
                     start_foreground("Connecting...", "target device: " + m_bdaddr, "");
+                    checkNtripParamsSpecified();
                 }
-                m_all_ntrip_params_specified = true;
-                try {
-                    for (String key : NTRIP_CONNECT_ARGS) {
-                        Object val = m_start_connect_args.get(key);
-                        if (val == null || (val instanceof String && ((String)val).isEmpty())) {
-                            log(TAG, "key: " + key + "got null or empty string so m_all_ntrip_params_specified false");
-                            m_all_ntrip_params_specified = false;
-                            break;
-                        }
-                    }
-                } catch (Exception e) {
-                    log(TAG, "WARNING: check m_all_ntrip_params_specified exception: " + Log.getStackTraceString(e));
-                    m_all_ntrip_params_specified = false;
-                }
-                log(TAG, "m_all_ntrip_params_specified: " + m_all_ntrip_params_specified);
-                //ntrip connection would start after we get next gga bashed on this m_all_ntrip_params_specified flag
             }
         }
+    }
+
+    private boolean tryUsbAutoConnect(HashMap<String, Object> connectArgs) {
+        try {
+            Object vidObj = connectArgs.get("usb_vendor_id");
+            Object pidObj = connectArgs.get("usb_product_id");
+            if (vidObj != null && pidObj != null) {
+                int vendorId = ((Number) vidObj).intValue();
+                int productId = ((Number) pidObj).intValue();
+                log(TAG, "USB: auto-connect VID=" + vendorId + " PID=" + productId);
+
+                UsbDeviceManager usbDeviceManager = new UsbDeviceManager(getApplicationContext());
+                android.hardware.usb.UsbDevice device = usbDeviceManager.getDeviceByVidPid(vendorId, productId);
+                if (device != null) {
+                    log(TAG, "USB: found device: " + device.getDeviceName());
+                    startUsbConnection(device);
+                    return true;
+                } else {
+                    log(TAG, "USB: device not found");
+                    toast("USB device not connected");
+                    broadcastDisconnect("USB device not found");
+                    return false;
+                }
+            } else {
+                // No VID/PID - this is manual connection from MainActivity, return true to keep service running
+                log(TAG, "USB: no VID/PID, waiting for manual connection");
+                return true;
+            }
+        } catch (Exception e) {
+            log(TAG, "USB: auto-connect failed: " + Log.getStackTraceString(e));
+            toast("USB connect failed: " + e.getMessage());
+            broadcastDisconnect("USB connect failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private void checkNtripParamsSpecified() {
+        m_all_ntrip_params_specified = true;
+        try {
+            for (String key : NTRIP_CONNECT_ARGS) {
+                Object val = m_start_connect_args.get(key);
+                if (val == null || (val instanceof String && ((String)val).isEmpty())) {
+                    log(TAG, "checkNtripParams: key " + key + " is null/empty");
+                    m_all_ntrip_params_specified = false;
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            log(TAG, "checkNtripParams exception: " + Log.getStackTraceString(e));
+            m_all_ntrip_params_specified = false;
+        }
+        log(TAG, "m_all_ntrip_params_specified: " + m_all_ntrip_params_specified);
     }
 
     public void start_ntrip_conn_if_specified_but_not_connected() {
