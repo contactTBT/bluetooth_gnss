@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:bluetooth_gnss/gnss_device.dart';
@@ -34,6 +35,9 @@ ValueNotifier<bool> isNtripConnected = ValueNotifier(false);
 ValueNotifier<int> ntripPacketsCount = ValueNotifier(0);
 final ValueNotifier<Map<String, Icon>> checkStateMapIcon = ValueNotifier({});
 final ValueNotifier<Map<String, String>> bdMapNotifier = ValueNotifier({});
+
+/// Debounce timer for setLiveArgs UI refresh
+Timer? _setLiveArgsDebounce;
 
 /// Unified device list containing both Bluetooth and USB devices
 final ValueNotifier<List<GnssDevice>> unifiedDeviceListNotifier = ValueNotifier([]);
@@ -631,7 +635,11 @@ Future<void> setLiveArgs() async
     'mock_lon_offset_meters': double.parse(prefService.get('mock_lon_offset_meters') ?? "0.0"),
     'mock_alt_offset_meters': double.parse(prefService.get('mock_alt_offset_meters') ?? "0.0"),
   });
-  developer.log("setLiveArgs setTs");
-  setLiveArgsTs.value = DateTime.timestamp();
-  developer.log("setLiveArgs setTs done: ${setLiveArgsTs.value}");
+  // Debounce the timestamp update to avoid focus loss during typing
+  _setLiveArgsDebounce?.cancel();
+  _setLiveArgsDebounce = Timer(const Duration(milliseconds: 800), () {
+    developer.log("setLiveArgs setTs (debounced)");
+    setLiveArgsTs.value = DateTime.timestamp();
+    developer.log("setLiveArgs setTs done: ${setLiveArgsTs.value}");
+  });
 }
