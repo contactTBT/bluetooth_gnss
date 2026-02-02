@@ -307,7 +307,8 @@ class SettingsScreenState extends State<SettingsScreen> {
                                 onPressed: () async {
                                   await prefService.set(
                                       'mock_timestamp_offset_secs', '0.0');
-                                  await setLiveArgs(); // if needed to reflect change
+                                  await setLiveArgs();
+                                  refreshLiveArgsUi();
                                 }),
                           ),
                           hintText: "Example: -1.5",
@@ -332,7 +333,8 @@ class SettingsScreenState extends State<SettingsScreen> {
                                 onPressed: () async {
                                   await prefService.set(
                                       'mock_lat_offset_meters', '0.0');
-                                  await setLiveArgs(); // if needed to reflect change
+                                  await setLiveArgs();
+                                  refreshLiveArgsUi();
                                 }),
                           ),
                           hintText: "Example: -2.5",
@@ -356,7 +358,8 @@ class SettingsScreenState extends State<SettingsScreen> {
                                 onPressed: () async {
                                   await prefService.set(
                                       'mock_lon_offset_meters', '0.0');
-                                  await setLiveArgs(); // if needed to reflect change
+                                  await setLiveArgs();
+                                  refreshLiveArgsUi();
                                 }),
                           ),
                           hintText: "Example: 3.5",
@@ -380,7 +383,8 @@ class SettingsScreenState extends State<SettingsScreen> {
                                 onPressed: () async {
                                   await prefService.set(
                                       'mock_alt_offset_meters', '0.0');
-                                  await setLiveArgs(); // if needed to reflect change
+                                  await setLiveArgs();
+                                  refreshLiveArgsUi();
                                 }),
                           ),
                           hintText: "Example: -10.5",
