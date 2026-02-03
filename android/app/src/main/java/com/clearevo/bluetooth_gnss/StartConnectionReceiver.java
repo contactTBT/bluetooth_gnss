@@ -20,20 +20,32 @@ public class StartConnectionReceiver extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         if ("bluetooth.CONNECT".equals(intent.getAction())) {
             try {
-            // defaults from preferences
-            final HashMap<String, Object> connectArgs = Util.load_last_connect_args(context);
+                // Try to load saved config, fallback to empty map if file doesn't exist
+                HashMap<String, Object> connectArgs;
+                try {
+                    connectArgs = Util.load_last_connect_args(context);
+                } catch (Exception e) {
+                    Log.d(TAG, "No saved config found, using intent args only: " + e.getMessage());
+                    connectArgs = new HashMap<>();
+                }
 
-            // get override from intent
-            final Bundle extras = intent.getExtras();
-            if (extras != null) {
-                final String configStr = extras.getString("config");
-                overrideConnectionWithOptions(connectArgs, configStr);
-            }
-                Util.connect(context, connectArgs);
+                // Override with intent extras
+                final Bundle extras = intent.getExtras();
+                if (extras != null) {
+                    final String configStr = extras.getString("config");
+                    overrideConnectionWithOptions(connectArgs, configStr);
+                }
+
+                // Only connect if we have minimum required args (bluetooth or usb device)
+                if (connectArgs.containsKey("bdaddr") || connectArgs.containsKey("usb_device_name")) {
+                    Util.connect(context, connectArgs);
+                } else {
+                    Log.e(TAG, "Missing device address (bdaddr or usb_device_name) - cannot connect. " +
+                            "Either connect once via the app first, or provide device info in intent config.");
+                }
             } catch (Exception e) {
-                Log.d(TAG, "StartConnectionReceiver onreceive got exception: " +Log.getStackTraceString(e));
+                Log.d(TAG, "StartConnectionReceiver onreceive got exception: " + Log.getStackTraceString(e));
             }
-
         }
     }
 
