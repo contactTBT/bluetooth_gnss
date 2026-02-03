@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'channels.dart';
 import 'connect.dart';
 import 'map_screen.dart';
+import 'main.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -38,6 +39,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _eventChannelSubscription = initEventChannels();
     Timer.periodic(const Duration(seconds: 2), (timer) {
       checkConnectState();
+    });
+
+    // Request battery optimization exemption on first launch
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        requestBatteryOptimization(context);
+      }
     });
   }
 
