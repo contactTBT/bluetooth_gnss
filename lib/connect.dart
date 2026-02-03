@@ -606,16 +606,18 @@ Future<ConnectState> _checkUpdateSelectedDev(
     icon_map["Location is on and 'High Accuracy'"] = iconOk;
   }*/
 
-  if (!(await isMockLocationEnabled())) {
+  if (!(await isMockLocationEnabled())) { 
     String msg =
         "Please go to phone Settings > Developer Options > Under 'Debugging', set 'Mock Location app' to 'Bluetooth GNSS'...";
-    icon_map["'Mock Location app' not 'Bluetooth GNSS'\n"] = iconFail;
+
+    // Warning instead of blocking - allow connection without mock location
+    icon_map["Mock Location not enabled\n(GPS positions won't update Android location)"] = iconWarn;
     connectStatus.value = msg;
-    return ret;
+  } else {
+    icon_map["'Mock Location app' is 'Bluetooth GNSS'\nWARNING: If you want use internal GPS device again,\nSet 'Select mock location app' to 'Nothing'\n(in 'Developer Settings')."] = iconOk;
   }
 
   //ok - ready to connect
-  icon_map["'Mock Location app' is 'Bluetooth GNSS'\nWARNING: If you want use internal GPS device again,\nSet 'Select mock location app' to 'Nothing'\n(in 'Developer Settings')."] = iconOk;
   connectStatus.value = "Please press the floating button to connect...";
   connectSelectedDevice.value = selected_dev_sum;
 

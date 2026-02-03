@@ -47,6 +47,11 @@ const iconFail = Icon(
   color: Colors.blueGrey,
   size: defaultChecklistIconSize,
 );
+const iconWarn = Icon(
+  Icons.warning_amber_rounded,
+  color: Colors.orange,
+  size: defaultChecklistIconSize,
+);
 
 Future<void> toast(String msg) async {
   try {
