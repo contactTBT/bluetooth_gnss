@@ -204,7 +204,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     } catch (Exception e) {}
                     setLiveArgs(connectArgs);
                     m_target_activity_class = Class.forName(MAIN_ACTIVITY_CLASSNAME);
-                    m_icon_id = R.mipmap.ic_launcher;
+                    m_icon_id = R.drawable.ic_stat_notify;
 
                     if (m_log_bt_rx_log_uri != null && (!m_log_bt_rx_log_uri.isEmpty())) {
                         String log_uri = m_log_bt_rx_log_uri;
