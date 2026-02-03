@@ -75,7 +75,7 @@ This follows the NMEA GGA standard where fix quality 0 = "Invalid" (no position 
 |---|-----------|--------|
 | IR1 | Existing POSITION_UPDATE broadcast format unchanged for normal position updates | |
 | IR2 | Existing disconnect handling (cleanup, toast, auto-reconnect) unchanged | |
-| IR3 | Broadcast uses same action: `com.clearevo.libbluetooth_gnss_service.POSITION_UPDATE` | |
+| IR3 | Broadcast uses same action: `com.dnablast.libbluetooth_gnss_service.POSITION_UPDATE` | |
 
 ### Quality Requirements
 
@@ -195,7 +195,7 @@ try {jo.put("fix_status", "Invalid");} catch (Exception e) {}
 - Service file: `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/bluetooth_gnss_service.java`
 - Story 1.10: [story-1.10-broadcast-enhanced-fields.md](story-1.10-broadcast-enhanced-fields.md)
 - Story 1.8: [story-1.8-disconnect-handling.md](story-1.8-disconnect-handling.md)
-- Broadcast action: `com.clearevo.libbluetooth_gnss_service.POSITION_UPDATE`
+- Broadcast action: `com.dnablast.libbluetooth_gnss_service.POSITION_UPDATE`
 - NMEA GGA Standard: Fix quality 0 = Invalid (no position available)
 
 ---

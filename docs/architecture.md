@@ -43,8 +43,8 @@ This document supplements existing project architecture by defining how new comp
 #### Key Architectural Patterns
 
 1. **Platform Channel Communication**
-   - `MethodChannel("com.clearevo.bluetooth_gnss/engine")` — Dart → Java method calls
-   - `EventChannel("com.clearevo.bluetooth_gnss/engine_events")` — Java → Dart async updates
+   - `MethodChannel("com.dnablast.bluetooth_gnss/engine")` — Dart → Java method calls
+   - `EventChannel("com.dnablast.bluetooth_gnss/engine_events")` — Java → Dart async updates
    - Parameters flow via `paramMap` with `ValueNotifier<dynamic>` for reactive UI
 
 2. **Connection Management**

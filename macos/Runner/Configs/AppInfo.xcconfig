@@ -8,7 +8,7 @@
 PRODUCT_NAME = bluetooth_gnss
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.clearevo.bluetoothGnss
+PRODUCT_BUNDLE_IDENTIFIER = com.dnablast.bluetoothGnss
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2024 com.clearevo. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2024 com.dnablast. All rights reserved.

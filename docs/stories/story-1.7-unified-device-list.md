@@ -197,7 +197,7 @@ static Stream<String> get usbDeviceEvents {
   return _eventChannel.receiveBroadcastStream().map((event) => event as String);
 }
 
-static const _eventChannel = EventChannel('com.clearevo.bluetooth_gnss/usb_events');
+static const _eventChannel = EventChannel('com.dnablast.bluetooth_gnss/usb_events');
 ```
 
 ### Empty State

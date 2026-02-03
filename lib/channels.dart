@@ -7,8 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:pref/pref.dart';
 
-const methodChannel = MethodChannel("com.clearevo.bluetooth_gnss/engine");
-const _eventChannel = EventChannel("com.clearevo.bluetooth_gnss/engine_events");
+const methodChannel = MethodChannel("com.dnablast.bluetooth_gnss/engine");
+const _eventChannel = EventChannel("com.dnablast.bluetooth_gnss/engine_events");
 
 
 Map<String, ValueNotifier<dynamic>> paramMap = {};

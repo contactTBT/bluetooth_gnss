@@ -14,7 +14,7 @@ import 'connect.dart';
 import 'main.dart';
 
 const _settingsEventChannel =
-    EventChannel("com.clearevo.bluetooth_gnss/settings_events");
+    EventChannel("com.dnablast.bluetooth_gnss/settings_events");
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});

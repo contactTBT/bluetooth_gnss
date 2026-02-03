@@ -65,7 +65,7 @@ List<Widget> connectedRows(BuildContext context) {
                   "- You can now use other apps like 'OsmAnd' or 'Waze' for navigation normally.\n"
                       "- NOT compatible with 'Google Maps' - it uses other location sources too and might behave strangely.\n"
                       "- Some apps that ignore 'mock' location, will not work correctly.\n"
-                      "- Developers can also get position json Android Intents broadcasted as: \"com.clearevo.libbluetooth_gnss_service.POSITION_UPDATE\"\n"
+                      "- Developers can also get position json Android Intents broadcasted as: \"com.dnablast.libbluetooth_gnss_service.POSITION_UPDATE\"\n"
                   ,
                   style: Theme.of(context).textTheme.bodySmall),
               const Padding(

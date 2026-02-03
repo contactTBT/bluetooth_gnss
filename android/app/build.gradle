@@ -28,7 +28,7 @@ def keystorePropertiesFile = rootProject.file('../../key.properties')
 keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 
 android {
-    namespace = "com.clearevo.bluetooth_gnss"
+    namespace = "com.dnablast.bluetooth_gnss"
     compileSdk = 35
     ndkVersion = "27.0.12077973"
 
@@ -39,7 +39,7 @@ android {
 
     defaultConfig {
         // Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.clearevo.bluetooth_gnss"
+        applicationId = "com.dnablast.bluetooth_gnss"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
         minSdk 26

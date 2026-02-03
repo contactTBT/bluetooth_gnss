@@ -109,7 +109,7 @@ Reuse the `broadcastDisconnect(String reason)` method from story 1.11 and call i
 ```java
 // Register receiver (same as story 1.11)
 IntentFilter filter = new IntentFilter();
-filter.addAction("com.clearevo.libbluetooth_gnss_service.POSITION_UPDATE");
+filter.addAction("com.dnablast.libbluetooth_gnss_service.POSITION_UPDATE");
 registerReceiver(myReceiver, filter);
 
 // Handle in receiver
@@ -160,7 +160,7 @@ public void onReceive(Context context, Intent intent) {
 
 - Service file: `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/bluetooth_gnss_service.java`
 - Story 1.11: [story-1.11-disconnect-broadcast.md](story-1.11-disconnect-broadcast.md)
-- Broadcast action: `com.clearevo.libbluetooth_gnss_service.POSITION_UPDATE`
+- Broadcast action: `com.dnablast.libbluetooth_gnss_service.POSITION_UPDATE`
 
 ---
 

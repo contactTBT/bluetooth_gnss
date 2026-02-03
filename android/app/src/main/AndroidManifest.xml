@@ -33,7 +33,7 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <service android:name="com.clearevo.libbluetooth_gnss_service.bluetooth_gnss_service"
+        <service android:name="com.dnablast.libbluetooth_gnss_service.bluetooth_gnss_service"
             android:exported="true"
             android:foregroundServiceType="location"
             />

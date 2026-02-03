@@ -190,7 +190,7 @@ Both values are already extracted in `onPositionUpdate()` method:
 
 - Service file: `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/bluetooth_gnss_service.java`
 - Parser file: `android/app/src/main/java/com/clearevo/libbluetooth_gnss_service/gnss_sentence_parser.java`
-- Broadcast action: `com.clearevo.libbluetooth_gnss_service.POSITION_UPDATE`
+- Broadcast action: `com.dnablast.libbluetooth_gnss_service.POSITION_UPDATE`
 
 ---
 

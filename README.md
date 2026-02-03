@@ -3,7 +3,7 @@ Bluetooth GNSS
 
 Connect your Android phone to external Bluetooth GPS, GLONASS, Galileo and BeiDou receivers and use the received location in your android phone via the mock location provider.
 
-Official app is available on Google Play as [Bluetooth GNSS](https://play.google.com/store/apps/details?id=com.clearevo.bluetooth_gnss&hl=en&gl=US).
+Official app is available on Google Play as [Bluetooth GNSS](https://play.google.com/store/apps/details?id=com.dnablast.bluetooth_gnss&hl=en&gl=US).
 
 Build instructions
 -----------
@@ -83,7 +83,7 @@ On the `TASKS` tab, create a new task (e.g. _Connect GPS_) and add the action _S
 * Mime Type: `text/plain`
 * Data: _&lt;empty&gt;_
 * Extra: _&lt;see json string below&gt;_
-* Package: `com.clearevo.bluetooth_gnss`
+* Package: `com.dnablast.bluetooth_gnss`
 * Class: _&lt;empty&gt;_
 * Target: `Broadcast Receiver`
 

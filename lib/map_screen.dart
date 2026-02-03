@@ -78,7 +78,7 @@ class MapScreenState extends State<MapScreen> {
           children: [
             TileLayer(
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.clearevo.bluetooth_gnss',
+              userAgentPackageName: 'com.dnablast.bluetooth_gnss',
             ),
             ValueListenableBuilder<LatLng?>(
               valueListenable: mapExternalDevPos,
