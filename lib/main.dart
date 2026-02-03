@@ -28,7 +28,7 @@ Future<void> main() async {
     'ntrip_host': "crtk.net",
     'ntrip_port': "2101",
     'ntrip_user': "c",
-    'ntrip_user': "c",
+    'ntrip_pass': "c",
     "mock_timestamp_use_system_time": true,
     "mock_timestamp_offset_secs": "0.0",
     "mock_lat_offset_meters": "0.0",
