@@ -107,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const Padding(
                         padding: EdgeInsets.only(top: 16),
                         child: Text(
-                          'RTK Correction helps you connect to external Bluetooth GPS/GNSS devices and set mock location on Android for improved accuracy or integration.',
+                          'RTK Correction helps you connect to external Bluetooth GPS/GNSS devices and set mock location on Android for improved accuracy or integration. \nRTK correction is forked from Bluetooth GNSS.',
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -116,15 +116,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             'https://github.com/ykasidit/bluetooth_gnss'),
                         child: const Text(
                           '🔗 Project homepage',
-                          style: TextStyle(color: Colors.blue),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      InkWell(
-                        onTap: () => _launchUrl(
-                            'https://github.com/ykasidit/bluetooth_gnss/issues'),
-                        child: const Text(
-                          '🐞 Report an issue',
                           style: TextStyle(color: Colors.blue),
                         ),
                       ),
