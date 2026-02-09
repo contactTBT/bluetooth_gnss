@@ -26,7 +26,7 @@
 
     <application
 
-        android:label="Bluetooth GNSS"
+        android:label="RTK Correction"
         tools:replace="android:label"
         android:icon="@mipmap/ic_launcher">
 

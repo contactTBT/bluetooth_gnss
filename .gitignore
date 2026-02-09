@@ -89,6 +89,7 @@ rust/Cargo.lock
 
 # Flutter Rust Bridge - cargokit (downloaded by flutter_rust_bridge_codegen integrate)
 rust_builder/cargokit/
+rust_builder/
 
 # Claude Code
 .claude/
