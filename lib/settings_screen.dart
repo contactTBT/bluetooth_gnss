@@ -429,7 +429,7 @@ class SettingsScreenState extends State<SettingsScreen> {
                       }),
                   const PrefTitle(title: Text('RTK/NTRIP Server settings')),
                   Text(
-                    "Set these if your Bluetooth GNSS device supports RTK,\n(Like Ardusimple U-Blox F9, etc)",
+                    "Set these if your RTK Correction device supports RTK,\n(Like Ardusimple U-Blox F9, etc)",
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const PrefCheckbox(

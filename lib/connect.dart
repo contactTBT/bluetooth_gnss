@@ -286,7 +286,7 @@ Future<void> connectUsb(GnssDevice device) async {
   developer.log("connectUsb() done");
 }
 
-/// Connect to a Bluetooth GNSS device (original connect logic)
+/// Connect to a RTK Correction device (original connect logic)
 Future<void> connectBluetooth() async {
   developer.log("connectBluetooth() start");
   String log_bt_rx_log_uri = prefService.get('log_bt_rx_log_uri') ?? "";
@@ -608,13 +608,13 @@ Future<ConnectState> _checkUpdateSelectedDev(
 
   if (!(await isMockLocationEnabled())) { 
     String msg =
-        "Please go to phone Settings > Developer Options > Under 'Debugging', set 'Mock Location app' to 'Bluetooth GNSS'...";
+        "Please go to phone Settings > Developer Options > Under 'Debugging', set 'Mock Location app' to 'RTK Correction'...";
 
     // Warning instead of blocking - allow connection without mock location
     icon_map["Mock Location not enabled\n(GPS positions won't update Android location)"] = iconWarn;
     connectStatus.value = msg;
   } else {
-    icon_map["'Mock Location app' is 'Bluetooth GNSS'\nWARNING: If you want use internal GPS device again,\nSet 'Select mock location app' to 'Nothing'\n(in 'Developer Settings')."] = iconOk;
+    icon_map["'Mock Location app' is 'RTK Correction'\nWARNING: If you want use internal GPS device again,\nSet 'Select mock location app' to 'Nothing'\n(in 'Developer Settings')."] = iconOk;
   }
 
   //ok - ready to connect

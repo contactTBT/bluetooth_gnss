@@ -1,6 +1,6 @@
-<i>Bluetooth GNSS</i> lets you use accurate satellite positioning from powerful external Bluetooth GPS/Galileo/GLONASS/BeiDou receivers instead of the less powerful internal A-GPS of phones/tablets - for better location accuracy with your favorite Maps and Navigation apps like Google Maps, etc.
+<i>RTK Correction</i> lets you use accurate satellite positioning from powerful external Bluetooth GPS/Galileo/GLONASS/BeiDou receivers instead of the less powerful internal A-GPS of phones/tablets - for better location accuracy with your favorite Maps and Navigation apps like Google Maps, etc.
 
-You must first get an external Bluetooth GNSS/GPS device like the EcoDroidGPS (www.ClearEvo.com), HOLUX, Garmin GLO, etc to use with this app, which is free and open-source software. If your Bluetooth GNSS/GPS device supports RTK, this app also supports overlay of NTRIP server data streams for professional RTK positioning (centimeter-level accuracy - depends on device).
+You must first get an external RTK Correction/GPS device like the EcoDroidGPS (www.ClearEvo.com), HOLUX, Garmin GLO, etc to use with this app, which is free and open-source software. If your RTK Correction/GPS device supports RTK, this app also supports overlay of NTRIP server data streams for professional RTK positioning (centimeter-level accuracy - depends on device).
 
 This app supports showing ’Accuracy’ estimates from the U-Blox ’PUBX’ accuracy messages, instead of the commonly used ’HDOP x CEP’ method. This PUBX accuracy reading exactly matches as is the same source of the ’Accuracy’ as shown in U-Center PC tool when connected directly to the M8030 (EcoDroidGPS) or ZED-F9P (EcoDroidGPS + ArduSimple) devices via USB.
 

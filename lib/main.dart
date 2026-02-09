@@ -92,7 +92,7 @@ class App extends StatelessWidget {
     return PrefService(
         service: prefService,
         child: MaterialApp(
-          title: 'Bluetooth GNSS',
+          title: 'RTK Correction',
           theme: ThemeData.light(
             useMaterial3: true,
           ),

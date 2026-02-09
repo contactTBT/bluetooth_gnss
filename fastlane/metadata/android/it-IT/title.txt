@@ -1,1 +1,1 @@
-Bluetooth GNSS
+RTK Correction

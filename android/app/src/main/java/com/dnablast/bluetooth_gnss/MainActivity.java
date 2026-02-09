@@ -747,7 +747,7 @@ D/btgnss_mainactvty(15208): 	at com.dnablast.bluetooth_gnss.MainActivity$1.handl
 
     public void stop_service_if_not_connected() {
         if (mBound && m_service != null && m_service.is_bt_connected()) {
-            toast("Bluetooth GNSS running in backgroud...");
+            toast("RTK Correction running in backgroud...");
         } else {
             Intent intent = new Intent(getApplicationContext(), bluetooth_gnss_service.class);
             stopService(intent);

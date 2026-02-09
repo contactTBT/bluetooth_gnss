@@ -69,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Bluetooth GNSS'),
+        title: const Text('RTK Correction'),
         actions: [
           IconButton(
             icon: const Icon(Icons.bluetooth_disabled),
@@ -107,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       const Padding(
                         padding: EdgeInsets.only(top: 16),
                         child: Text(
-                          'Bluetooth GNSS helps you connect to external Bluetooth GPS/GNSS devices and set mock location on Android for improved accuracy or integration.',
+                          'RTK Correction helps you connect to external Bluetooth GPS/GNSS devices and set mock location on Android for improved accuracy or integration.',
                         ),
                       ),
                       const SizedBox(height: 10),
