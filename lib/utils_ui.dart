@@ -32,6 +32,11 @@ const iconConnected = Icon(
   color: Colors.blue,
   size: defaultConnectStateIconSize,
 );
+const iconConnectedUsb = Icon(
+  Icons.usb,
+  color: Colors.green,
+  size: defaultConnectStateIconSize,
+);
 const iconLoading = Icon(
   Icons.access_time,
   color: Colors.grey,
@@ -52,6 +57,15 @@ const iconWarn = Icon(
   color: Colors.orange,
   size: defaultChecklistIconSize,
 );
+
+/// Returns the appropriate connected icon based on device type
+Icon getConnectedIcon() {
+  GnssDevice? selectedDevice = getSelectedDevice();
+  if (selectedDevice != null && selectedDevice.type == DeviceConnectionType.usb) {
+    return iconConnectedUsb;
+  }
+  return iconConnected;
+}
 
 Future<void> toast(String msg) async {
   try {

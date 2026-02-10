@@ -53,7 +53,7 @@ List<Widget> connectedRows(BuildContext context) {
               const Padding(
                 padding: EdgeInsets.all(5.0),
               ),
-              iconConnected,
+              getConnectedIcon(),
               const Padding(
                 padding: EdgeInsets.all(5.0),
               ),
