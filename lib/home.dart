@@ -101,8 +101,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     context: context,
                     applicationName: info.appName,
                     applicationVersion: info.version,
-                    applicationIcon: Image.asset("assets/icons/ic_launcher.png",
-                        width: 48, height: 48),
+                    applicationIcon: CircleAvatar(
+                                        backgroundColor: Colors.teal,
+                                        radius: 32,  // Controls overall size
+                                        child: Image.asset(
+                                          "assets/icons/ic_launcher.png",
+                                          width: 48,
+                                          height: 48,
+                                        ),
+                                      ),
                     children: [
                       const Padding(
                         padding: EdgeInsets.only(top: 16),
