@@ -1333,6 +1333,27 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     }
                 }
             }
+            // Parse GST sentence for standard accuracy (works with bridge-filtered devices like ArduSimple)
+            // GST format: $GNGST,time,rms,semi-major,semi-minor,orient,sigmaLat,sigmaLon,sigmaAlt*cs
+            String gst_line = new String(readline, "ascii").trim();
+            if (gst_line.startsWith("$") && gst_line.length() > 6 && gst_line.substring(3, 6).equals("GST")) {
+                try {
+                    String[] parts = gst_line.split(",");
+                    if (parts.length >= 9) {
+                        double sigmaLat = Double.parseDouble(parts[6]);
+                        double sigmaLon = Double.parseDouble(parts[7]);
+                        String sigmaAltStr = parts[8];
+                        if (sigmaAltStr.contains("*")) sigmaAltStr = sigmaAltStr.substring(0, sigmaAltStr.indexOf("*"));
+                        double sigmaAlt = Double.parseDouble(sigmaAltStr);
+                        // DRMS horizontal: 2D RMS = sqrt(sigmaLat² + sigmaLon²), approx 1-sigma 2D circle radius
+                        double hAcc = Math.sqrt(sigmaLat * sigmaLat + sigmaLon * sigmaLon);
+                        m_gnss_parser.put_param("", "GST_hAcc", hAcc);
+                        m_gnss_parser.put_param("", "GST_vAcc", sigmaAlt);
+                    }
+                } catch (Exception e) {
+                    log(TAG, "GST parse exception: " + e.getMessage());
+                }
+            }
             if (parsed_nmea != null) {
                 m_activity_for_nmea_param_callbacks.onDeviceMessage(gnss_sentence_parser.MessageType.NMEA, (HashMap<String, Object>) parsed_nmea.clone());
             }
@@ -2055,7 +2076,13 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                                 vaccuracy = Double.parseDouble((String) params_map.get("UBX_POSITION_vAcc"));
                             } catch (Exception e) {}
                         }
-
+                        // Fallback to GST sentence accuracy if UBX precision not available
+                        if (Double.isNaN(accuracy) && params_map.containsKey("GST_hAcc")) {
+                            try { accuracy = (double) params_map.get("GST_hAcc"); } catch (Exception e) {}
+                        }
+                        if (Double.isNaN(vaccuracy) && params_map.containsKey("GST_vAcc")) {
+                            try { vaccuracy = (double) params_map.get("GST_vAcc"); } catch (Exception e) {}
+                        }
                         //if not ubx or ubx conv failed...
                         if (Double.isNaN(accuracy)) {
                             accuracy = hdop * get_connected_device_CEP();

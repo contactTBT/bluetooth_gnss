@@ -6,7 +6,13 @@
       "Bash(flutter build:*)",
       "Bash(flutter test)",
       "Bash(grep:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(flutter --version)",
+      "Bash(where flutter)",
+      "Bash(echo $FLUTTER_ROOT)",
+      "Bash(echo $PATH)",
+      "Bash(flutter pub get)",
+      "Bash(dart pub cache list)"
     ]
   }
 }
