@@ -75,6 +75,9 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     public static final String BLE_GAP_SCAN_MODE = "ble_gap_scan_mode";
     public static final UUID nordic_uart_service_uuid = UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
     public static final UUID qstarz_chrc_tx_uuid = UUID.fromString("6E400004-B5A3-F393-E0A9-E50E24DCCA9E");
+    // Ardusimple ZED-F9P / RTK Smart Antenna — standard Nordic UART TX (streams NMEA) / RX (receives RTCM)
+    public static final UUID ardusimple_chrc_tx_uuid = UUID.fromString("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");
+    public static final UUID ardusimple_chrc_rx_uuid = UUID.fromString("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
     String[] SATS_USED_KEYS = new String[]{"GP_n_sats_used", "GL_n_sats_used", "GA_n_sats_used", "GB_n_sats_used", "GQ_n_sats_used"};
 
     rfcomm_conn_mgr g_rfcomm_mgr = null;
@@ -708,7 +711,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     throw new Exception("invalid state - device name is null");
                 }
                 log(TAG, "using dev name:" + name);
-                m_ble_qstarz_mode = name.startsWith("QSTARZ");
+                m_ble_qstarz_mode = true;//name.startsWith("QSTARZ");
                 log(TAG, "m_ble_qstarz_mode:" + m_ble_qstarz_mode);
 
                 m_gnss_parser = new gnss_sentence_parser(); //use new instance

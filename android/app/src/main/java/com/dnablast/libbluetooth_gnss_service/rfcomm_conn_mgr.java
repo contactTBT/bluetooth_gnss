@@ -4,6 +4,8 @@ import static com.dnablast.libbluetooth_gnss_service.NativeParser.parse_qstarz_p
 import static com.dnablast.libbluetooth_gnss_service.bluetooth_gnss_service.log;
 import static com.dnablast.libbluetooth_gnss_service.bluetooth_gnss_service.nordic_uart_service_uuid;
 import static com.dnablast.libbluetooth_gnss_service.bluetooth_gnss_service.qstarz_chrc_tx_uuid;
+import static com.dnablast.libbluetooth_gnss_service.bluetooth_gnss_service.ardusimple_chrc_tx_uuid;
+import static com.dnablast.libbluetooth_gnss_service.bluetooth_gnss_service.ardusimple_chrc_rx_uuid;
 import static com.dnablast.libbluetooth_gnss_service.gnss_sentence_parser.toHexString;
 
 import android.bluetooth.BluetoothAdapter;
@@ -442,6 +444,15 @@ public class rfcomm_conn_mgr {
         } catch (Exception e) {
         }
 
+        try {
+            if (m_ble_writer_thread != null) {
+                m_ble_writer_thread.interrupt();
+                m_ble_writer_thread = null;
+            }
+        } catch (Exception e) {
+        }
+        m_ardusimple_rx_characteristic = null;
+
         log(TAG, "close bluetoothGatt");
         close_gatt();
 
@@ -473,6 +484,14 @@ public class rfcomm_conn_mgr {
     /////////// ble uart stuff
 
     boolean m_ble_mode = false;
+    // True when device is an Ardusimple ZED-F9P / RTK Smart Antenna streaming NMEA over Nordic UART
+    boolean m_is_ardusimple_nmea_mode = false;
+    // Accumulates BLE notification bytes until a complete NMEA sentence (\r\n) is received
+    private ByteArrayOutputStream m_nmea_accumulator = new ByteArrayOutputStream();
+    // Ardusimple RX characteristic used to write RTCM corrections to the device
+    private BluetoothGattCharacteristic m_ardusimple_rx_characteristic = null;
+    // Thread that drains m_outgoing_buffers → GATT writeCharacteristic in BLE mode
+    private Thread m_ble_writer_thread = null;
     private BluetoothGatt bluetoothGatt;
     // Descriptor UUID for enabling notifications
     private static final UUID CLIENT_CHARACTERISTIC_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
@@ -502,6 +521,48 @@ public class rfcomm_conn_mgr {
             } catch (Exception e) {}
         }
         bluetoothGatt = null;
+    }
+
+    /**
+     * Drains m_outgoing_buffers → GATT writeCharacteristic on the Ardusimple RX characteristic.
+     * BLE MTU is typically 20 bytes; data is chunked automatically.
+     * The ZED-F9P accepts RTCM3 on its UART2 which is bridged here via Nordic UART RX (6E400002).
+     */
+    private void start_ble_rtcm_writer_thread(final BluetoothGatt gatt) {
+        m_ble_writer_thread = new Thread() {
+            public void run() {
+                log(TAG, "ble_rtcm_writer_thread start");
+                final int BLE_MTU = 20; // conservative default; negotiate MTU for larger payloads
+                while (!closed && m_ble_writer_thread == this) {
+                    try {
+                        byte[] payload = m_outgoing_buffers.poll();
+                        if (payload == null) {
+                            Thread.sleep(10);
+                            continue;
+                        }
+                        // Chunk into BLE_MTU-sized writes
+                        int offset = 0;
+                        while (offset < payload.length && !closed) {
+                            int chunkLen = Math.min(BLE_MTU, payload.length - offset);
+                            byte[] chunk = new byte[chunkLen];
+                            System.arraycopy(payload, offset, chunk, 0, chunkLen);
+                            m_ardusimple_rx_characteristic.setValue(chunk);
+                            m_ardusimple_rx_characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+                            gatt.writeCharacteristic(m_ardusimple_rx_characteristic);
+                            offset += chunkLen;
+                            // Small delay to avoid flooding the BLE stack
+                            Thread.sleep(20);
+                        }
+                    } catch (InterruptedException e) {
+                        break;
+                    } catch (Exception e) {
+                        log(TAG, "ble_rtcm_writer_thread exception: " + Log.getStackTraceString(e));
+                    }
+                }
+                log(TAG, "ble_rtcm_writer_thread end");
+            }
+        };
+        m_ble_writer_thread.start();
     }
 
     CountDownLatch ble_connecting_latch;
@@ -542,20 +603,42 @@ public class rfcomm_conn_mgr {
             ble_connecting_latch.countDown(); //connecting completed
             log("ble onServicesDiscovered() gatt scan status: "+status);
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                // Get the Nordic UART Service
+                // Get the Nordic UART Service (shared by Qstarz and Ardusimple)
                 BluetoothGattService service = gatt.getService(nordic_uart_service_uuid);
 
                 if (service != null) {
-                    log(TAG, "Nordic/qstarz UART Service discovered");
-                    // Get the TX characteristic
+                    log(TAG, "Nordic UART Service discovered");
+
+                    // Try Qstarz TX UUID (6E400004) first, then Ardusimple standard TX UUID (6E400003)
                     BluetoothGattCharacteristic txCharacteristic = service.getCharacteristic(qstarz_chrc_tx_uuid);
                     if (txCharacteristic != null) {
-                        log(TAG, "TX Characteristic found, enabling notifications...");
+                        m_is_ardusimple_nmea_mode = false;
+                        log(TAG, "TX Characteristic found (Qstarz binary mode), enabling notifications...");
+                    } else {
+                        txCharacteristic = service.getCharacteristic(ardusimple_chrc_tx_uuid);
+                        if (txCharacteristic != null) {
+                            m_is_ardusimple_nmea_mode = true;
+                            m_nmea_accumulator.reset();
+                            m_ardusimple_rx_characteristic = service.getCharacteristic(ardusimple_chrc_rx_uuid);
+                            if (m_ardusimple_rx_characteristic != null) {
+                                log(TAG, "TX Characteristic found (Ardusimple NMEA mode) + RX for RTCM write, enabling notifications...");
+                            } else {
+                                log(TAG, "TX Characteristic found (Ardusimple NMEA mode), RX characteristic not found — RTCM write disabled");
+                            }
+                        }
+                    }
+
+                    if (txCharacteristic != null) {
                         // Enable notifications on the TX characteristic
                         enableTxNotifications(gatt, txCharacteristic);
                         //notify connected
                         if (m_rfcomm_to_tcp_callbacks != null) {
                             m_rfcomm_to_tcp_callbacks.on_rfcomm_connected();
+                        }
+
+                        // Start the RTCM writer thread for Ardusimple (drains m_outgoing_buffers via GATT write)
+                        if (m_is_ardusimple_nmea_mode && m_ardusimple_rx_characteristic != null) {
+                            start_ble_rtcm_writer_thread(gatt);
                         }
 
                         //watch ble conn state
@@ -590,6 +673,9 @@ public class rfcomm_conn_mgr {
                             }
                         };
                         m_conn_state_watcher.start();
+                    } else {
+                        log(TAG, "No known TX Characteristic found in Nordic UART Service — closing");
+                        close_gatt();
                     }
                 }
             } else {
@@ -622,7 +708,7 @@ public class rfcomm_conn_mgr {
             super.onCharacteristicChanged(gatt, characteristic);
 
             if (qstarz_chrc_tx_uuid.equals(characteristic.getUuid())) {
-                // Read the data from the TX characteristic
+                // ---- Qstarz binary packet path ----
                 byte[] data = characteristic.getValue();
                 if (data == null) {
                     data = new byte[]{};
@@ -670,6 +756,41 @@ public class rfcomm_conn_mgr {
                             Log.d(TAG, "WARNING: assemble qstarz packet exception: "+Log.getStackTraceString(e));
                         }
                     }
+                }
+
+            } else if (ardusimple_chrc_tx_uuid.equals(characteristic.getUuid())) {
+                // ---- Ardusimple ZED-F9P / RTK Smart Antenna NMEA path ----
+                // BLE notifications arrive in ≤20-byte chunks; accumulate until \r\n line endings.
+                byte[] data = characteristic.getValue();
+                if (data == null || data.length == 0) return;
+                try {
+                    bluetooth_gnss_service.curInstance.log_bt_rx(data);
+                } catch (Exception e) {
+                    log(TAG, "ardusimple log_bt_rx exception: " + Log.getStackTraceString(e));
+                }
+                try {
+                    m_nmea_accumulator.write(data);
+                    // Dispatch every complete NMEA sentence (\r\n terminated)
+                    byte[] buf = m_nmea_accumulator.toByteArray();
+                    int lineStart = 0;
+                    for (int i = 1; i < buf.length; i++) {
+                        if (buf[i - 1] == '\r' && buf[i] == '\n') {
+                            int lineLen = i + 1 - lineStart;
+                            byte[] line = new byte[lineLen];
+                            System.arraycopy(buf, lineStart, line, 0, lineLen);
+                            if (m_rfcomm_to_tcp_callbacks != null) {
+                                m_rfcomm_to_tcp_callbacks.on_readline(line);
+                            }
+                            lineStart = i + 1;
+                        }
+                    }
+                    // Keep any incomplete tail for the next notification
+                    m_nmea_accumulator.reset();
+                    if (lineStart < buf.length) {
+                        m_nmea_accumulator.write(buf, lineStart, buf.length - lineStart);
+                    }
+                } catch (Exception e) {
+                    log(TAG, "WARNING: ardusimple nmea assemble exception: " + Log.getStackTraceString(e));
                 }
             }
         }
