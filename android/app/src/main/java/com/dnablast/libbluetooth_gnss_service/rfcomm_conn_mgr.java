@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 
@@ -492,6 +493,8 @@ public class rfcomm_conn_mgr {
     private BluetoothGattCharacteristic m_ardusimple_rx_characteristic = null;
     // Thread that drains m_outgoing_buffers → GATT writeCharacteristic in BLE mode
     private Thread m_ble_writer_thread = null;
+    // One permit released by onCharacteristicWrite — ensures we wait for ACK before next chunk
+    private final Semaphore m_ble_write_semaphore = new Semaphore(1);
     private BluetoothGatt bluetoothGatt;
     // Descriptor UUID for enabling notifications
     private static final UUID CLIENT_CHARACTERISTIC_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
@@ -529,10 +532,13 @@ public class rfcomm_conn_mgr {
      * The ZED-F9P accepts RTCM3 on its UART2 which is bridged here via Nordic UART RX (6E400002).
      */
     private void start_ble_rtcm_writer_thread(final BluetoothGatt gatt) {
+        m_ble_write_semaphore.drainPermits();
+        m_ble_write_semaphore.release(); // start with 1 permit available
         m_ble_writer_thread = new Thread() {
             public void run() {
                 log(TAG, "ble_rtcm_writer_thread start");
-                final int BLE_MTU = 20; // conservative default; negotiate MTU for larger payloads
+                final int BLE_MTU = 20; // conservative default
+                final int WRITE_ACK_TIMEOUT_MS = 2000;
                 while (!closed && m_ble_writer_thread == this) {
                     try {
                         byte[] payload = m_outgoing_buffers.poll();
@@ -540,18 +546,31 @@ public class rfcomm_conn_mgr {
                             Thread.sleep(10);
                             continue;
                         }
-                        // Chunk into BLE_MTU-sized writes
+                        // Chunk into BLE_MTU-sized writes, waiting for ACK before each chunk
                         int offset = 0;
                         while (offset < payload.length && !closed) {
                             int chunkLen = Math.min(BLE_MTU, payload.length - offset);
                             byte[] chunk = new byte[chunkLen];
                             System.arraycopy(payload, offset, chunk, 0, chunkLen);
+                            // Wait for previous write to be acknowledged before sending next.
+                            // On timeout (missed onCharacteristicWrite callback under GATT congestion),
+                            // reset the semaphore so subsequent payloads are not permanently blocked.
+                            boolean acquired = m_ble_write_semaphore.tryAcquire(WRITE_ACK_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                            if (!acquired) {
+                                log(TAG, "ble write ACK timeout — resetting semaphore, dropping payload");
+                                m_ble_write_semaphore.drainPermits();
+                                m_ble_write_semaphore.release(); // restore to 1 so next payload can proceed
+                                break;
+                            }
                             m_ardusimple_rx_characteristic.setValue(chunk);
-                            m_ardusimple_rx_characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
-                            gatt.writeCharacteristic(m_ardusimple_rx_characteristic);
+                            // WRITE_TYPE_DEFAULT: standard Write With Response (required by Nordic UART RX)
+                            m_ardusimple_rx_characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+                            boolean ok = gatt.writeCharacteristic(m_ardusimple_rx_characteristic);
+                            if (!ok) {
+                                log(TAG, "writeCharacteristic returned false — releasing semaphore");
+                                m_ble_write_semaphore.release();
+                            }
                             offset += chunkLen;
-                            // Small delay to avoid flooding the BLE stack
-                            Thread.sleep(20);
                         }
                     } catch (InterruptedException e) {
                         break;
@@ -699,6 +718,18 @@ public class rfcomm_conn_mgr {
                     data = new byte[]{};
                 }
                 //Log.d(TAG, "onCharacteristicRead data len: " + data.length);
+            }
+        }
+
+        @Override
+        public void onCharacteristicWrite(@NonNull BluetoothGatt gatt, @NonNull BluetoothGattCharacteristic characteristic, int status) {
+            super.onCharacteristicWrite(gatt, characteristic, status);
+            // Release semaphore so the writer thread can send the next chunk
+            if (ardusimple_chrc_rx_uuid.equals(characteristic.getUuid())) {
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+                    log(TAG, "onCharacteristicWrite RTCM chunk failed status: " + status);
+                }
+                m_ble_write_semaphore.release();
             }
         }
 
