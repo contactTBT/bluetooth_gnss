@@ -32,6 +32,7 @@ ValueNotifier<int> mockLocationSetTs = ValueNotifier(0);
 ValueNotifier<String> mockLocationSetStatus = ValueNotifier(waitingDev);
 ValueNotifier<bool> isNtripConnected = ValueNotifier(false);
 ValueNotifier<int> ntripPacketsCount = ValueNotifier(0);
+ValueNotifier<DateTime?> ntripLastPacketTime = ValueNotifier(null);
 final ValueNotifier<Map<String, Icon>> checkStateMapIcon = ValueNotifier({});
 final ValueNotifier<Map<String, String>> bdMapNotifier = ValueNotifier({});
 
@@ -449,8 +450,12 @@ Future<ConnectState> _checkUpdateSelectedDev(
     isNtripConnected.value =
         (await methodChannel.invokeMethod('is_ntrip_connected')) as bool? ??
             false;
-    ntripPacketsCount.value =
+    int newNtripCount =
         (await methodChannel.invokeMethod('get_ntrip_cb_count')) as int? ?? 0;
+    if (newNtripCount != ntripPacketsCount.value) {
+      ntripLastPacketTime.value = DateTime.now();
+    }
+    ntripPacketsCount.value = newNtripCount;
     if (isAnyConnected) {
       await wakelockEnable();
     } else {

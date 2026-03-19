@@ -112,7 +112,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     boolean m_send_gga_to_ntrip = true;
     boolean m_all_ntrip_params_specified = false;
     long m_last_ntrip_gga_send_ts = 0;
-    public static final long SEND_GGA_TO_NTRIP_EVERY_MILLIS = 29 * 1000;
+    public static final long SEND_GGA_TO_NTRIP_EVERY_MILLIS = 5 * 1000;
     //{ntrip_user=null, ntrip_mountpoint=null, secure=true, autostart=false, ntrip_pass=null, ble_gap_scan_mode=false, reconnect=false, log_bt_rx_log_uri=, mock_location_timestamp_offset_millis=0, bdaddr=98:D3:61:FD:78:33, ntrip_host=igs-ip.net, ntrip_port=2101, disable_ntrip=false}
     public static final String BT_ARG_SECURE = "secure";
     public static final String BT_ARG_AUTOSTART = "autostart";

@@ -495,6 +495,8 @@ public class rfcomm_conn_mgr {
     private Thread m_ble_writer_thread = null;
     // One permit released by onCharacteristicWrite — ensures we wait for ACK before next chunk
     private final Semaphore m_ble_write_semaphore = new Semaphore(1);
+    // Negotiated BLE payload size (MTU - 3 ATT header bytes). Default 20 until onMtuChanged fires.
+    private volatile int m_ble_payload_size = 20;
     private BluetoothGatt bluetoothGatt;
     // Descriptor UUID for enabling notifications
     private static final UUID CLIENT_CHARACTERISTIC_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
@@ -537,7 +539,6 @@ public class rfcomm_conn_mgr {
         m_ble_writer_thread = new Thread() {
             public void run() {
                 log(TAG, "ble_rtcm_writer_thread start");
-                final int BLE_MTU = 20; // conservative default
                 final int WRITE_ACK_TIMEOUT_MS = 2000;
                 while (!closed && m_ble_writer_thread == this) {
                     try {
@@ -546,10 +547,10 @@ public class rfcomm_conn_mgr {
                             Thread.sleep(10);
                             continue;
                         }
-                        // Chunk into BLE_MTU-sized writes, waiting for ACK before each chunk
+                        // Chunk into negotiated-MTU-sized writes, waiting for ACK before each chunk
                         int offset = 0;
                         while (offset < payload.length && !closed) {
-                            int chunkLen = Math.min(BLE_MTU, payload.length - offset);
+                            int chunkLen = Math.min(m_ble_payload_size, payload.length - offset);
                             byte[] chunk = new byte[chunkLen];
                             System.arraycopy(payload, offset, chunk, 0, chunkLen);
                             // Wait for previous write to be acknowledged before sending next.
@@ -607,8 +608,10 @@ public class rfcomm_conn_mgr {
             log(TAG, "ble onConnectionStateChange: "+newState);
             m_ble_conn_state = newState;
             if (newState == BluetoothGatt.STATE_CONNECTED) {
-                log(TAG, "Connected to GATT server, discovering services...");
-                gatt.discoverServices();
+                log(TAG, "Connected to GATT server, requesting MTU before service discovery...");
+                // Request larger MTU first; onMtuChanged will trigger discoverServices.
+                // This ensures MTU is settled before any other GATT operation (serialization requirement).
+                gatt.requestMtu(247);
             } else if (newState == BluetoothGatt.STATE_DISCONNECTED) {
                 ble_connecting_latch.countDown();
                 log(TAG, "Disconnected from GATT server");
@@ -731,6 +734,20 @@ public class rfcomm_conn_mgr {
                 }
                 m_ble_write_semaphore.release();
             }
+        }
+
+        @Override
+        public void onMtuChanged(@NonNull BluetoothGatt gatt, int mtu, int status) {
+            super.onMtuChanged(gatt, mtu, status);
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                // ATT protocol uses 3 bytes of overhead; remaining bytes are payload
+                m_ble_payload_size = mtu - 3;
+                log(TAG, "MTU negotiated: " + mtu + " → payload size: " + m_ble_payload_size);
+            } else {
+                log(TAG, "MTU negotiation failed status: " + status + " — keeping payload size: " + m_ble_payload_size);
+            }
+            // MTU step is done — now safe to discover services (GATT operations must be serialized)
+            gatt.discoverServices();
         }
 
         ArrayList<byte[]> last_qstarz_packet_buffers = new ArrayList();
