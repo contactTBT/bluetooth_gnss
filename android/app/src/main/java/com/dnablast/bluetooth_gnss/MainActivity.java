@@ -650,7 +650,7 @@ D/btgnss_mainactvty(15208): 	at com.dnablast.bluetooth_gnss.MainActivity$1.handl
         ArrayList<String> ret = null;
         ntrip_conn_mgr mgr = null;
         try {
-            mgr = new ntrip_conn_mgr(host, port, "", user, pass, null);
+            mgr = new ntrip_conn_mgr(host, port, "", user, pass, null, null);
             ret = mgr.get_mount_point_list();
         } catch (Exception e) {
             Log.d(TAG, "get_mountpoint_list call exception: " + Log.getStackTraceString(e));

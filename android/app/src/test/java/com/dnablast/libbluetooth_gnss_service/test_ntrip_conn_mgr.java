@@ -79,7 +79,7 @@ public class test_ntrip_conn_mgr implements ntrip_conn_callbacks{
             for (String mpl_user : test_mpl_users)
                 for (String mpl_pass : test_mpl_passes) {
                     try {
-                        mgr = new ntrip_conn_mgr(host, port, "", mpl_user, mpl_pass, this);
+                        mgr = new ntrip_conn_mgr(host, port, "", mpl_user, mpl_pass, null, this);
                         mpl = mgr.get_mount_point_list();
                         for (String mp : mpl) {
                             if (mp.startsWith("STR;")) {
@@ -102,7 +102,7 @@ public class test_ntrip_conn_mgr implements ntrip_conn_callbacks{
             ntrip_conn_mgr mgr = null;
             try {
                 //use port+10 to use as a wrong server/port that would timeout
-                mgr = new ntrip_conn_mgr(host, port+10, "", null, null, this);
+                mgr = new ntrip_conn_mgr(host, port+10, "", null, null, null, this);
                 ArrayList<String> mpl = mgr.get_mount_point_list();
                 throw new Exception("must not reach here - failed");
             } catch (java.net.SocketTimeoutException se) {
@@ -131,7 +131,7 @@ public class test_ntrip_conn_mgr implements ntrip_conn_callbacks{
         {
             ntrip_conn_mgr mgr = null;
             try {
-                mgr = new ntrip_conn_mgr(host, port, first_mount_point, user, pass, this);
+                mgr = new ntrip_conn_mgr(host, port, first_mount_point, user, pass, null, this);
                 mgr.connect();
 
                 Thread.sleep(5000);

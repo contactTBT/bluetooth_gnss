@@ -48,8 +48,9 @@ public class ntrip_conn_mgr {
     String m_user;
     String m_pass;
     String m_mount_point;
+    String m_initial_gga; // sent as Ntrip-GGA header on connect; may be null
 
-    public ntrip_conn_mgr(String tcp_server_host, final int tcp_server_port, String mount_point, String user, String pass, ntrip_conn_callbacks cb) throws Exception
+    public ntrip_conn_mgr(String tcp_server_host, final int tcp_server_port, String mount_point, String user, String pass, String initial_gga, ntrip_conn_callbacks cb) throws Exception
     {
         m_cb = cb;
 
@@ -58,6 +59,7 @@ public class ntrip_conn_mgr {
 
         m_user = user;
         m_pass = pass;
+        m_initial_gga = initial_gga;
 
         if (mount_point == null)
             throw new Exception("mount_point must not be null - use empty string for get_mount_point_list() target use cases");
@@ -133,7 +135,7 @@ public class ntrip_conn_mgr {
             Log.d(TAG, "done opening tcp socket to host: " + m_tcp_server_host + " port: " + m_tcp_server_port +" m_mount_point: "+m_mount_point);
 
 
-            String request_msg = gen_http_request_msg(m_mount_point, m_user, m_pass, m_tcp_server_host, m_tcp_server_port);
+            String request_msg = gen_http_request_msg(m_mount_point, m_user, m_pass, m_tcp_server_host, m_tcp_server_port, m_initial_gga);
             Log.d(TAG, "request_msg: "+request_msg);
             m_sock_os.write(request_msg.getBytes("ascii"));
 
@@ -234,7 +236,7 @@ public class ntrip_conn_mgr {
     }
 
 
-    public static String gen_http_request_msg(String get_path, String user, String pass, String host, int port) throws Exception
+    public static String gen_http_request_msg(String get_path, String user, String pass, String host, int port, String gga_sentence) throws Exception
     {
         String request_msg = "GET /" + get_path + " HTTP/1.0\r\n";
         String host_encap = host;
@@ -246,6 +248,12 @@ public class ntrip_conn_mgr {
         request_msg += "Accept: */*\r\n";
         request_msg += "Host: " + host_encap + ":" + port + "\r\n";
         request_msg += "Connection: close\r\n";
+        if (gga_sentence != null && !gga_sentence.trim().isEmpty()) {
+            // Ntrip-GGA header: lets VRS casters generate a virtual base station at the rover's
+            // position from the very first correction packet, matching how SWMaps behaves.
+            request_msg += "Ntrip-GGA: " + gga_sentence.trim() + "\r\n";
+            Log.d(TAG, "including Ntrip-GGA header: " + gga_sentence.trim());
+        }
         if (user != null && pass != null) {
             String user_pass = user + ":" + pass;
             String user_pass_base64 = to_base64(user_pass);

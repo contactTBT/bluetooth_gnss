@@ -499,18 +499,12 @@ public class rfcomm_conn_mgr {
     private BluetoothGattCharacteristic m_ardusimple_rx_characteristic = null;
     // Thread that drains m_outgoing_buffers → GATT writeCharacteristic in BLE mode
     private Thread m_ble_writer_thread = null;
-    // One permit released by onCharacteristicWrite — ensures we wait for ACK before next chunk
+    // One permit; released by onCharacteristicWrite so the writer waits for ACK before next chunk.
     private final Semaphore m_ble_write_semaphore = new Semaphore(1);
     // Negotiated BLE payload size (MTU - 3 ATT header bytes). Default 20 until onMtuChanged fires.
     private volatile int m_ble_payload_size = 20;
     // Max RTCM payloads in outgoing queue; older entries are dropped when exceeded (RTCM is time-sensitive)
-    private static final int BLE_OUTGOING_QUEUE_MAX_SIZE = 20;
-    // Number of consecutive write ACK timeouts before forcing a reconnect (2s × 3 = 6s of dead pipeline)
-    private static final int BLE_WRITE_TIMEOUT_RECONNECT_THRESHOLD = 3;
-    private volatile int m_ble_consecutive_write_timeouts = 0;
-    // Generation counter: bumped on timeout so stale onCharacteristicWrite callbacks don't release the semaphore
-    private volatile int m_ble_write_generation = 0;
-    private volatile int m_ble_dispatched_generation = 0;
+    private static final int BLE_OUTGOING_QUEUE_MAX_SIZE = 100;
     private BluetoothGatt bluetoothGatt;
     // Descriptor UUID for enabling notifications
     private static final UUID CLIENT_CHARACTERISTIC_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
@@ -544,8 +538,9 @@ public class rfcomm_conn_mgr {
 
     /**
      * Drains m_outgoing_buffers → GATT writeCharacteristic on the Ardusimple RX characteristic.
-     * BLE MTU is typically 20 bytes; data is chunked automatically.
-     * The ZED-F9P accepts RTCM3 on its UART2 which is bridged here via Nordic UART RX (6E400002).
+     * Uses WRITE_TYPE_DEFAULT (Write With Response) for reliability; the semaphore gates each
+     * chunk on an ACK from the peripheral.  ACK timeout is 300 ms — if the peripheral misses a
+     * response the chunk is skipped and the pipeline continues rather than stalling for 2 s.
      */
     private void start_ble_rtcm_writer_thread(final BluetoothGatt gatt) {
         m_ble_write_semaphore.drainPermits();
@@ -553,7 +548,7 @@ public class rfcomm_conn_mgr {
         m_ble_writer_thread = new Thread() {
             public void run() {
                 log(TAG, "ble_rtcm_writer_thread start");
-                final int WRITE_ACK_TIMEOUT_MS = 2000;
+                final int WRITE_ACK_TIMEOUT_MS = 300;
                 while (!closed && m_ble_writer_thread == this) {
                     try {
                         byte[] payload = m_outgoing_buffers.poll();
@@ -561,8 +556,7 @@ public class rfcomm_conn_mgr {
                             Thread.sleep(10);
                             continue;
                         }
-                        // Chunk into negotiated-MTU-sized writes, waiting for ACK before each chunk.
-                        // Snapshot the characteristic reference to avoid NPE if close() nulls it mid-flight.
+                        // Snapshot characteristic ref to avoid NPE if close() nulls it mid-flight.
                         BluetoothGattCharacteristic rxChar = m_ardusimple_rx_characteristic;
                         if (rxChar == null) continue;
                         int offset = 0;
@@ -570,27 +564,15 @@ public class rfcomm_conn_mgr {
                             int chunkLen = Math.min(m_ble_payload_size, payload.length - offset);
                             byte[] chunk = new byte[chunkLen];
                             System.arraycopy(payload, offset, chunk, 0, chunkLen);
-                            // Wait for previous write to be acknowledged before sending next.
+                            // Wait for previous ACK; on timeout just skip rest of payload and keep moving.
                             boolean acquired = m_ble_write_semaphore.tryAcquire(WRITE_ACK_TIMEOUT_MS, TimeUnit.MILLISECONDS);
                             if (!acquired) {
-                                m_ble_consecutive_write_timeouts++;
-                                log(TAG, "ble write ACK timeout #" + m_ble_consecutive_write_timeouts + " — resetting semaphore, dropping payload");
-                                // Bump generation so any late-firing onCharacteristicWrite won't release a stale permit
-                                m_ble_write_generation++;
+                                log(TAG, "ble write ACK timeout — skipping payload, resetting semaphore");
                                 m_ble_write_semaphore.drainPermits();
-                                m_ble_write_semaphore.release(); // restore to 1 so next payload can proceed
-                                if (m_ble_consecutive_write_timeouts >= BLE_WRITE_TIMEOUT_RECONNECT_THRESHOLD) {
-                                    log(TAG, "ble write: " + BLE_WRITE_TIMEOUT_RECONNECT_THRESHOLD +
-                                        " consecutive timeouts — triggering reconnect");
-                                    trigger_ble_reconnect();
-                                }
+                                m_ble_write_semaphore.release();
                                 break;
                             }
-                            m_ble_consecutive_write_timeouts = 0; // successful acquire — pipeline is alive
-                            // Capture generation before dispatch so onCharacteristicWrite can validate it
-                            m_ble_dispatched_generation = m_ble_write_generation;
                             rxChar.setValue(chunk);
-                            // WRITE_TYPE_DEFAULT: standard Write With Response (required by Nordic UART RX)
                             rxChar.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
                             boolean ok = gatt.writeCharacteristic(rxChar);
                             if (!ok) {
@@ -675,7 +657,10 @@ public class rfcomm_conn_mgr {
             log(TAG, "ble onConnectionStateChange: "+newState);
             m_ble_conn_state = newState;
             if (newState == BluetoothGatt.STATE_CONNECTED) {
-                log(TAG, "Connected to GATT server, requesting MTU before service discovery...");
+                log(TAG, "Connected to GATT server, requesting high connection priority + MTU before service discovery...");
+                // High priority reduces connection interval to ~7.5–15 ms (vs ~100 ms default),
+                // cutting per-chunk ACK latency and preventing RTCM correction staleness on the receiver.
+                gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
                 // Request larger MTU first; onMtuChanged will trigger discoverServices.
                 // This ensures MTU is settled before any other GATT operation (serialization requirement).
                 gatt.requestMtu(247);
@@ -754,21 +739,11 @@ public class rfcomm_conn_mgr {
         @Override
         public void onCharacteristicWrite(@NonNull BluetoothGatt gatt, @NonNull BluetoothGattCharacteristic characteristic, int status) {
             super.onCharacteristicWrite(gatt, characteristic, status);
-            // Release semaphore so the writer thread can send the next chunk.
-            // Guard with generation check: if a timeout reset bumped m_ble_write_generation
-            // after we dispatched the write, this callback is stale and must NOT release —
-            // the writer already reset the semaphore to 1, so releasing here would cause 2
-            // concurrent writes and a GATT_ERROR.
             if (ardusimple_chrc_rx_uuid.equals(characteristic.getUuid())) {
                 if (status != BluetoothGatt.GATT_SUCCESS) {
                     log(TAG, "onCharacteristicWrite RTCM chunk failed status: " + status);
                 }
-                if (m_ble_dispatched_generation == m_ble_write_generation) {
-                    m_ble_write_semaphore.release();
-                } else {
-                    log(TAG, "onCharacteristicWrite: stale generation (" + m_ble_dispatched_generation
-                        + " vs " + m_ble_write_generation + ") — not releasing semaphore");
-                }
+                m_ble_write_semaphore.release();
             }
         }
 

@@ -112,7 +112,8 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     boolean m_send_gga_to_ntrip = true;
     boolean m_all_ntrip_params_specified = false;
     long m_last_ntrip_gga_send_ts = 0;
-    public static final long SEND_GGA_TO_NTRIP_EVERY_MILLIS = 5 * 1000;
+    String m_last_gga_sentence = null; // latest GGA from device; included in NTRIP HTTP request header
+    public static final long SEND_GGA_TO_NTRIP_EVERY_MILLIS = 1000;
     //{ntrip_user=null, ntrip_mountpoint=null, secure=true, autostart=false, ntrip_pass=null, ble_gap_scan_mode=false, reconnect=false, log_bt_rx_log_uri=, mock_location_timestamp_offset_millis=0, bdaddr=98:D3:61:FD:78:33, ntrip_host=igs-ip.net, ntrip_port=2101, disable_ntrip=false}
     public static final String BT_ARG_SECURE = "secure";
     public static final String BT_ARG_AUTOSTART = "autostart";
@@ -348,7 +349,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     int port = -1;
                     try {
                         port = Integer.parseInt((String) m_start_connect_args.get(NTRIP_ARG_PORT));
-                        connect_ntrip((String) m_start_connect_args.get(NTRIP_ARG_HOST), port, (String) m_start_connect_args.get(NTRIP_ARG_MOUNTPOINT), (String) m_start_connect_args.get(NTRIP_ARG_USER), (String) m_start_connect_args.get(NTRIP_ARG_PASS));
+                        connect_ntrip((String) m_start_connect_args.get(NTRIP_ARG_HOST), port, (String) m_start_connect_args.get(NTRIP_ARG_MOUNTPOINT), (String) m_start_connect_args.get(NTRIP_ARG_USER), (String) m_start_connect_args.get(NTRIP_ARG_PASS), m_last_gga_sentence);
                     } catch (Exception e) {
                         log(TAG, "call connect_ntrip exception: " + getStackTraceString(e));
                     }
@@ -747,7 +748,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     }
 
 
-    public int connect_ntrip(String host, int port, String first_mount_point, String user, String pass) {
+    public int connect_ntrip(String host, int port, String first_mount_point, String user, String pass, String initial_gga) {
         log(TAG, "connect_ntrip set m_ntrip_conn_mgr start");
 
         if (is_trying_ntrip_connect()) {
@@ -769,7 +770,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
         }
 
         try {
-            m_ntrip_conn_mgr = new ntrip_conn_mgr(host, port, first_mount_point, user, pass, this);
+            m_ntrip_conn_mgr = new ntrip_conn_mgr(host, port, first_mount_point, user, pass, initial_gga, this);
             log(TAG, "connect_ntrip set m_ntrip_conn_mgr done");
             //need new thread here else will fail network on mainthread below...
             m_ntrip_connecting_thread = new Thread() {
@@ -1318,6 +1319,8 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                 nmea_name = (String) parsed_nmea.get("name");
             }
             if (nmea_name.startsWith("GGA")) {
+                // Cache GGA before starting NTRIP so it's available for the Ntrip-GGA HTTP header
+                m_last_gga_sentence = (String) parsed_nmea.get("contents");
                 if (m_all_ntrip_params_specified) {
                     start_ntrip_conn_if_specified_but_not_connected();
                 }
