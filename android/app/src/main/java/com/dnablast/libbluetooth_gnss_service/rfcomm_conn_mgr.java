@@ -415,6 +415,12 @@ public class rfcomm_conn_mgr {
 
     public void add_send_buffer(byte[] buffer)
     {
+        if (m_ble_mode && m_is_ardusimple_nmea_mode) {
+            // Drop oldest entries when full; RTCM is time-sensitive — fresh corrections win
+            while (m_outgoing_buffers.size() >= BLE_OUTGOING_QUEUE_MAX_SIZE) {
+                m_outgoing_buffers.poll();
+            }
+        }
         m_outgoing_buffers.add(buffer);
     }
 
@@ -497,6 +503,14 @@ public class rfcomm_conn_mgr {
     private final Semaphore m_ble_write_semaphore = new Semaphore(1);
     // Negotiated BLE payload size (MTU - 3 ATT header bytes). Default 20 until onMtuChanged fires.
     private volatile int m_ble_payload_size = 20;
+    // Max RTCM payloads in outgoing queue; older entries are dropped when exceeded (RTCM is time-sensitive)
+    private static final int BLE_OUTGOING_QUEUE_MAX_SIZE = 20;
+    // Number of consecutive write ACK timeouts before forcing a reconnect (2s × 3 = 6s of dead pipeline)
+    private static final int BLE_WRITE_TIMEOUT_RECONNECT_THRESHOLD = 3;
+    private volatile int m_ble_consecutive_write_timeouts = 0;
+    // Generation counter: bumped on timeout so stale onCharacteristicWrite callbacks don't release the semaphore
+    private volatile int m_ble_write_generation = 0;
+    private volatile int m_ble_dispatched_generation = 0;
     private BluetoothGatt bluetoothGatt;
     // Descriptor UUID for enabling notifications
     private static final UUID CLIENT_CHARACTERISTIC_CONFIG_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
@@ -547,26 +561,38 @@ public class rfcomm_conn_mgr {
                             Thread.sleep(10);
                             continue;
                         }
-                        // Chunk into negotiated-MTU-sized writes, waiting for ACK before each chunk
+                        // Chunk into negotiated-MTU-sized writes, waiting for ACK before each chunk.
+                        // Snapshot the characteristic reference to avoid NPE if close() nulls it mid-flight.
+                        BluetoothGattCharacteristic rxChar = m_ardusimple_rx_characteristic;
+                        if (rxChar == null) continue;
                         int offset = 0;
                         while (offset < payload.length && !closed) {
                             int chunkLen = Math.min(m_ble_payload_size, payload.length - offset);
                             byte[] chunk = new byte[chunkLen];
                             System.arraycopy(payload, offset, chunk, 0, chunkLen);
                             // Wait for previous write to be acknowledged before sending next.
-                            // On timeout (missed onCharacteristicWrite callback under GATT congestion),
-                            // reset the semaphore so subsequent payloads are not permanently blocked.
                             boolean acquired = m_ble_write_semaphore.tryAcquire(WRITE_ACK_TIMEOUT_MS, TimeUnit.MILLISECONDS);
                             if (!acquired) {
-                                log(TAG, "ble write ACK timeout — resetting semaphore, dropping payload");
+                                m_ble_consecutive_write_timeouts++;
+                                log(TAG, "ble write ACK timeout #" + m_ble_consecutive_write_timeouts + " — resetting semaphore, dropping payload");
+                                // Bump generation so any late-firing onCharacteristicWrite won't release a stale permit
+                                m_ble_write_generation++;
                                 m_ble_write_semaphore.drainPermits();
                                 m_ble_write_semaphore.release(); // restore to 1 so next payload can proceed
+                                if (m_ble_consecutive_write_timeouts >= BLE_WRITE_TIMEOUT_RECONNECT_THRESHOLD) {
+                                    log(TAG, "ble write: " + BLE_WRITE_TIMEOUT_RECONNECT_THRESHOLD +
+                                        " consecutive timeouts — triggering reconnect");
+                                    trigger_ble_reconnect();
+                                }
                                 break;
                             }
-                            m_ardusimple_rx_characteristic.setValue(chunk);
+                            m_ble_consecutive_write_timeouts = 0; // successful acquire — pipeline is alive
+                            // Capture generation before dispatch so onCharacteristicWrite can validate it
+                            m_ble_dispatched_generation = m_ble_write_generation;
+                            rxChar.setValue(chunk);
                             // WRITE_TYPE_DEFAULT: standard Write With Response (required by Nordic UART RX)
-                            m_ardusimple_rx_characteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
-                            boolean ok = gatt.writeCharacteristic(m_ardusimple_rx_characteristic);
+                            rxChar.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+                            boolean ok = gatt.writeCharacteristic(rxChar);
                             if (!ok) {
                                 log(TAG, "writeCharacteristic returned false — releasing semaphore");
                                 m_ble_write_semaphore.release();
@@ -583,6 +609,47 @@ public class rfcomm_conn_mgr {
             }
         };
         m_ble_writer_thread.start();
+    }
+
+    /** Triggers a BLE reconnect by signalling on_rfcomm_disconnected, which causes
+     *  bluetooth_gnss_service to close() and re-enter the auto-reconnect loop. */
+    private void trigger_ble_reconnect() {
+        if (closed) return;
+        log(TAG, "trigger_ble_reconnect: signalling on_rfcomm_disconnected");
+        if (m_rfcomm_to_tcp_callbacks != null) {
+            m_rfcomm_to_tcp_callbacks.on_rfcomm_disconnected();
+        }
+    }
+
+    /** Starts the BLE connection-state watchdog thread. */
+    private void start_ble_conn_state_watcher() {
+        m_conn_state_watcher = new Thread() {
+            public void run() {
+                while (m_conn_state_watcher == this) {
+                    try {
+                        Thread.sleep(3_000);
+                        if (closed)
+                            break;
+                        if (!is_bt_connected()) {
+                            throw new Exception("bluetooth device disconnected");
+                        }
+                    } catch (Exception e) {
+                        if (e instanceof InterruptedException) {
+                            log(TAG, "rfcomm_to_tcp m_conn_state_watcher ble ending with signal from close()");
+                        } else {
+                            log(TAG, "rfcomm_to_tcp m_conn_state_watcher ble ending with exception: " + Log.getStackTraceString(e));
+                            try {
+                                if (m_rfcomm_to_tcp_callbacks != null)
+                                    m_rfcomm_to_tcp_callbacks.on_rfcomm_disconnected();
+                            } catch (Exception ee) {
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        };
+        m_conn_state_watcher.start();
     }
 
     CountDownLatch ble_connecting_latch;
@@ -651,50 +718,10 @@ public class rfcomm_conn_mgr {
                     }
 
                     if (txCharacteristic != null) {
-                        // Enable notifications on the TX characteristic
+                        // Enable notifications on the TX characteristic.
+                        // onDescriptorWrite will be called when writeDescriptor() completes — only then
+                        // is it safe to start RTCM writes (GATT operations must be serialized).
                         enableTxNotifications(gatt, txCharacteristic);
-                        //notify connected
-                        if (m_rfcomm_to_tcp_callbacks != null) {
-                            m_rfcomm_to_tcp_callbacks.on_rfcomm_connected();
-                        }
-
-                        // Start the RTCM writer thread for Ardusimple (drains m_outgoing_buffers via GATT write)
-                        if (m_is_ardusimple_nmea_mode && m_ardusimple_rx_characteristic != null) {
-                            start_ble_rtcm_writer_thread(gatt);
-                        }
-
-                        //watch ble conn state
-                        m_conn_state_watcher = new Thread() {
-                            public void run() {
-                                while (m_conn_state_watcher == this) {
-                                    try {
-
-                                        Thread.sleep(3_000);
-
-                                        if (closed)
-                                            break; //if close() was called then dont notify on_bt_disconnected or on_target_tcp_disconnected
-
-                                        if (is_bt_connected() == false) {
-                                            throw new Exception("bluetooth device disconnected");
-                                        }
-
-                                    } catch (Exception e) {
-                                        if (e instanceof InterruptedException) {
-                                            log(TAG, "rfcomm_to_tcp m_conn_state_watcher ble ending with signal from close()");
-                                        } else {
-                                            log(TAG, "rfcomm_to_tcp m_conn_state_watcher ble ending with exception: " + Log.getStackTraceString(e));
-                                            try {
-                                                if (m_rfcomm_to_tcp_callbacks != null)
-                                                    m_rfcomm_to_tcp_callbacks.on_rfcomm_disconnected();
-                                            } catch (Exception ee) {
-                                            }
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
-                        };
-                        m_conn_state_watcher.start();
                     } else {
                         log(TAG, "No known TX Characteristic found in Nordic UART Service — closing");
                         close_gatt();
@@ -727,12 +754,21 @@ public class rfcomm_conn_mgr {
         @Override
         public void onCharacteristicWrite(@NonNull BluetoothGatt gatt, @NonNull BluetoothGattCharacteristic characteristic, int status) {
             super.onCharacteristicWrite(gatt, characteristic, status);
-            // Release semaphore so the writer thread can send the next chunk
+            // Release semaphore so the writer thread can send the next chunk.
+            // Guard with generation check: if a timeout reset bumped m_ble_write_generation
+            // after we dispatched the write, this callback is stale and must NOT release —
+            // the writer already reset the semaphore to 1, so releasing here would cause 2
+            // concurrent writes and a GATT_ERROR.
             if (ardusimple_chrc_rx_uuid.equals(characteristic.getUuid())) {
                 if (status != BluetoothGatt.GATT_SUCCESS) {
                     log(TAG, "onCharacteristicWrite RTCM chunk failed status: " + status);
                 }
-                m_ble_write_semaphore.release();
+                if (m_ble_dispatched_generation == m_ble_write_generation) {
+                    m_ble_write_semaphore.release();
+                } else {
+                    log(TAG, "onCharacteristicWrite: stale generation (" + m_ble_dispatched_generation
+                        + " vs " + m_ble_write_generation + ") — not releasing semaphore");
+                }
             }
         }
 
@@ -748,6 +784,29 @@ public class rfcomm_conn_mgr {
             }
             // MTU step is done — now safe to discover services (GATT operations must be serialized)
             gatt.discoverServices();
+        }
+
+        @Override
+        public void onDescriptorWrite(@NonNull BluetoothGatt gatt,
+                                      @NonNull BluetoothGattDescriptor descriptor,
+                                      int status) {
+            super.onDescriptorWrite(gatt, descriptor, status);
+            log(TAG, "onDescriptorWrite status: " + status);
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                // Descriptor write confirmed — BLE notification subscription is active.
+                // This is the first safe point to start sending RTCM writes; any write
+                // attempted before this callback would conflict with the writeDescriptor operation.
+                if (m_is_ardusimple_nmea_mode && m_ardusimple_rx_characteristic != null) {
+                    start_ble_rtcm_writer_thread(gatt);
+                }
+                if (m_rfcomm_to_tcp_callbacks != null) {
+                    m_rfcomm_to_tcp_callbacks.on_rfcomm_connected();
+                }
+                start_ble_conn_state_watcher();
+            } else {
+                log(TAG, "onDescriptorWrite failed — closing");
+                close();
+            }
         }
 
         ArrayList<byte[]> last_qstarz_packet_buffers = new ArrayList();

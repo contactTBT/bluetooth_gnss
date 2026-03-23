@@ -12,7 +12,8 @@
       "Bash(echo $FLUTTER_ROOT)",
       "Bash(echo $PATH)",
       "Bash(flutter pub get)",
-      "Bash(dart pub cache list)"
+      "Bash(dart pub cache list)",
+      "Bash(flutter analyze:*)"
     ]
   }
 }
