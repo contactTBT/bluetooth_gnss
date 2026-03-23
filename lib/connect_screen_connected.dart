@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:pref/pref.dart';
 import 'package:share_plus/share_plus.dart';
 
-import 'channels.dart' show paramMap;
 import 'const.dart';
 import 'utils_ui.dart';
 
@@ -94,8 +93,6 @@ List<Widget> connectedRows(BuildContext context) {
                 paramRow(context, 'lon',
                     double_fraction_digits: POS_FRACTION_DIGITS,
                     style: Theme.of(context).textTheme.headlineSmall),
-                _fixQualityBadge(),
-                const Padding(padding: EdgeInsets.all(4.0)),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: <Widget>[
@@ -230,109 +227,11 @@ List<Widget> connectedRows(BuildContext context) {
                       style: Theme.of(context).textTheme.bodySmall),
                 ],
               ),
-              const Padding(padding: EdgeInsets.all(6.0)),
-              _rtcmFlowIndicator(),
               const Padding(padding: EdgeInsets.all(50.0)), //so above dosnt get blocked/unreadable by the FAB
             ],
           ),
         )))
   ];
-}
-
-Widget _fixQualityBadge() {
-  paramMapSubscribe('ANY_fix_quality');
-  return ValueListenableBuilder<dynamic>(
-    valueListenable: paramMap['ANY_fix_quality']!,
-    builder: (context, val, _) {
-      int? q = int.tryParse('$val');
-      Color color;
-      String label;
-      switch (q) {
-        case 4:
-          color = Colors.green;
-          label = 'RTK Fixed';
-          break;
-        case 5:
-          color = Colors.orange;
-          label = 'RTK Float';
-          break;
-        case 2:
-          color = Colors.lightBlue;
-          label = 'DGPS';
-          break;
-        case 1:
-          color = Colors.grey;
-          label = 'GPS';
-          break;
-        default:
-          color = Colors.red.shade300;
-          label = val == '' ? 'No Fix' : 'Fix: $val';
-      }
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              label,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14),
-            ),
-          ),
-        ],
-      );
-    },
-  );
-}
-
-Widget _rtcmFlowIndicator() {
-  return ValueListenableBuilder<DateTime?>(
-    valueListenable: ntripLastPacketTime,
-    builder: (context, lastTime, _) {
-      Color color;
-      String label;
-      if (lastTime == null) {
-        color = Colors.grey;
-        label = 'No RTCM corrections received yet';
-      } else {
-        int secsAgo = DateTime.now().difference(lastTime).inSeconds;
-        if (secsAgo < 60) {
-          color = Colors.green;
-          label = 'RTCM flowing (last ${secsAgo}s ago)';
-        } else if (secsAgo < 120) {
-          color = Colors.orange;
-          label = 'RTCM stalled? (${secsAgo}s since last packet)';
-        } else {
-          color = Colors.red;
-          label = 'RTCM stopped (${secsAgo}s ago) — NTRIP likely dropped';
-        }
-      }
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text("RTCM status:",
-              style: Theme.of(context).textTheme.bodySmall),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              label,
-              style: const TextStyle(color: Colors.white, fontSize: 11),
-            ),
-          ),
-        ],
-      );
-    },
-  );
 }
 
 List<Widget> getDevSepcificRows(BuildContext context) {
