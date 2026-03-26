@@ -977,6 +977,15 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
             new Thread() {
                 public void run() {
                     try {
+                        // $PUBX,41: NMEA-level command to enable UBX binary input on the current port.
+                        // Ardusimple Smart Antenna defaults have RTCM3+NMEA input but UBX input disabled,
+                        // which silently drops the UBX CFG-MSG below. inMask=0x0023 (NMEA+UBX+RTCM3),
+                        // outMask=0x0001 (NMEA), baudRate=0 (keep current), autobaud=0.
+                        // Send for UART1 (port 1) and UART2 (port 2) since we don't know which NUS uses.
+                        // Checksum: $PUBX,41,1,0023,0001,0,0 → *2B; port 2 → *28
+                        g_rfcomm_mgr.add_send_buffer("$PUBX,41,1,0023,0001,0,0*2B\r\n".getBytes("ascii"));
+                        g_rfcomm_mgr.add_send_buffer("$PUBX,41,2,0023,0001,0,0*28\r\n".getBytes("ascii"));
+                        Thread.sleep(200); // allow ZED-F9P to reconfigure before UBX commands
                         g_rfcomm_mgr.add_send_buffer(fromHexString("B5 62 06 01 03 00 F1 00 01 FC 13"));  //enable pubx config data - for pubx accuracies
                         g_rfcomm_mgr.add_send_buffer(fromHexString("B5 62 0A 04 00 00 0E 34"));  //poll ubx-mon-ver for hardware/firmware info of the receiver
                         g_rfcomm_mgr.add_send_buffer(fromHexString("B5 62 0A 28 00 00 32 A0"));  //poll ubx-mon-gnss default system-settings

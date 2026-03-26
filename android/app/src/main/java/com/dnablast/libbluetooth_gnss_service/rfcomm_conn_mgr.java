@@ -546,9 +546,9 @@ public class rfcomm_conn_mgr {
 
     /**
      * Drains m_outgoing_buffers → GATT writeCharacteristic on the Ardusimple RX characteristic.
-     * Uses WRITE_TYPE_DEFAULT (Write With Response) for reliability; the semaphore gates each
-     * chunk on an ACK from the peripheral.  ACK timeout is 300 ms — if the peripheral misses a
-     * response the chunk is skipped and the pipeline continues rather than stalling for 2 s.
+     * Uses WRITE_TYPE_NO_RESPONSE (NUS standard) for maximum throughput — no ACK round-trip.
+     * Falls back to WRITE_TYPE_DEFAULT with semaphore-gated ACK (1000 ms timeout) only if the
+     * characteristic does not advertise PROPERTY_WRITE_NO_RESPONSE.
      */
     private void start_ble_rtcm_writer_thread(final BluetoothGatt gatt) {
         m_ble_write_semaphore.drainPermits();
@@ -728,12 +728,13 @@ public class rfcomm_conn_mgr {
                             m_ardusimple_rx_characteristic = service.getCharacteristic(ardusimple_chrc_rx_uuid);
                             if (m_ardusimple_rx_characteristic != null) {
                                 int rxProp = m_ardusimple_rx_characteristic.getProperties();
-                                // Prefer write-with-response (more reliable for RTCM — guaranteed delivery);
-                                // fall back to no-response only if PROPERTY_WRITE is absent.
-                                boolean supportsWriteWithResponse = (rxProp & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0;
-                                m_ble_rx_write_type = supportsWriteWithResponse
-                                        ? BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                                        : BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE;
+                                // Prefer write-without-response (NUS standard): removes ACK round-trip bottleneck,
+                                // matching SWMaps behaviour and maximising RTCM correction throughput.
+                                // Fall back to write-with-response only if PROPERTY_WRITE_NO_RESPONSE is absent.
+                                boolean supportsNoResponse = (rxProp & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0;
+                                m_ble_rx_write_type = supportsNoResponse
+                                        ? BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                                        : BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT;
                                 log(TAG, "TX Characteristic found (Ardusimple NMEA mode) + RX for RTCM write, rxProp: " + rxProp + " write type: " + m_ble_rx_write_type + ", enabling notifications...");
                             } else {
                                 log(TAG, "TX Characteristic found (Ardusimple NMEA mode), RX characteristic not found — RTCM write disabled");
