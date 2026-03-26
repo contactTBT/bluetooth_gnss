@@ -498,6 +498,9 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                         g_usb_mgr.add_send_buffer(fromHexString("B5 62 06 01 03 00 F1 00 01 FC 13"));  //enable pubx config data - for pubx accuracies
                         g_usb_mgr.add_send_buffer(fromHexString("B5 62 0A 04 00 00 0E 34"));  //poll ubx-mon-ver for hardware/firmware info of the receiver
                         g_usb_mgr.add_send_buffer(fromHexString("B5 62 0A 28 00 00 32 A0"));  //poll ubx-mon-gnss default system-settings
+                        // UBX-CFG-VALSET (RAM): CFG-NMEA-HIGHPREC=1 (8-decimal GGA → better VRS corrections),
+                        //                       CFG-UART1INPROT-RTCM3X=1 (ensure RTCM3 input accepted on UART1)
+                        g_usb_mgr.add_send_buffer(fromHexString("B5 62 06 8A 0E 00 00 01 00 00 02 00 61 10 01 05 00 73 10 01 9C A8"));
                     } catch (Exception e) {
                         log(TAG, "USB m_ubx_send_enable_extra_used_packets exception: " + getStackTraceString(e));
                     }
@@ -977,6 +980,9 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                         g_rfcomm_mgr.add_send_buffer(fromHexString("B5 62 06 01 03 00 F1 00 01 FC 13"));  //enable pubx config data - for pubx accuracies
                         g_rfcomm_mgr.add_send_buffer(fromHexString("B5 62 0A 04 00 00 0E 34"));  //poll ubx-mon-ver for hardware/firmware info of the receiver
                         g_rfcomm_mgr.add_send_buffer(fromHexString("B5 62 0A 28 00 00 32 A0"));  //poll ubx-mon-gnss default system-settings
+                        // UBX-CFG-VALSET (RAM): CFG-NMEA-HIGHPREC=1 (8-decimal GGA → better VRS corrections),
+                        //                       CFG-UART1INPROT-RTCM3X=1 (ensure RTCM3 input accepted on UART1)
+                        g_rfcomm_mgr.add_send_buffer(fromHexString("B5 62 06 8A 0E 00 00 01 00 00 02 00 61 10 01 05 00 73 10 01 9C A8"));
                     } catch (Exception e) {
                         log(TAG, "m_ubx_send_enable_extra_used_packets exception: "+ getStackTraceString(e));
                     }
