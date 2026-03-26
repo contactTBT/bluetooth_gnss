@@ -499,8 +499,10 @@ public class rfcomm_conn_mgr {
     private BluetoothGattCharacteristic m_ardusimple_rx_characteristic = null;
     // Thread that drains m_outgoing_buffers → GATT writeCharacteristic in BLE mode
     private Thread m_ble_writer_thread = null;
-    // One permit; released by onCharacteristicWrite so the writer waits for ACK before next chunk.
+    // One permit; used to gate write-with-response chunks on ACK. Not used for WRITE_NO_RESPONSE.
     private final Semaphore m_ble_write_semaphore = new Semaphore(1);
+    // Write type resolved from RX characteristic properties; WRITE_NO_RESPONSE preferred (NUS standard).
+    private int m_ble_rx_write_type = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE;
     // Negotiated BLE payload size (MTU - 3 ATT header bytes). Default 20 until onMtuChanged fires.
     private volatile int m_ble_payload_size = 20;
     // Max RTCM payloads in outgoing queue; older entries are dropped when exceeded (RTCM is time-sensitive)
@@ -564,20 +566,31 @@ public class rfcomm_conn_mgr {
                             int chunkLen = Math.min(m_ble_payload_size, payload.length - offset);
                             byte[] chunk = new byte[chunkLen];
                             System.arraycopy(payload, offset, chunk, 0, chunkLen);
-                            // Wait for previous ACK; on timeout just skip rest of payload and keep moving.
-                            boolean acquired = m_ble_write_semaphore.tryAcquire(WRITE_ACK_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-                            if (!acquired) {
-                                log(TAG, "ble write ACK timeout — skipping payload, resetting semaphore");
-                                m_ble_write_semaphore.drainPermits();
-                                m_ble_write_semaphore.release();
-                                break;
-                            }
-                            rxChar.setValue(chunk);
-                            rxChar.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
-                            boolean ok = gatt.writeCharacteristic(rxChar);
-                            if (!ok) {
-                                log(TAG, "writeCharacteristic returned false — releasing semaphore");
-                                m_ble_write_semaphore.release();
+                            if (m_ble_rx_write_type == BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) {
+                                // Write with response: gate each chunk on peripheral ACK.
+                                boolean acquired = m_ble_write_semaphore.tryAcquire(WRITE_ACK_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                                if (!acquired) {
+                                    log(TAG, "ble write ACK timeout — skipping payload, resetting semaphore");
+                                    m_ble_write_semaphore.drainPermits();
+                                    m_ble_write_semaphore.release();
+                                    break;
+                                }
+                                rxChar.setValue(chunk);
+                                rxChar.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+                                boolean ok = gatt.writeCharacteristic(rxChar);
+                                if (!ok) {
+                                    log(TAG, "writeCharacteristic returned false — releasing semaphore");
+                                    m_ble_write_semaphore.release();
+                                }
+                            } else {
+                                // Write without response (NUS standard): fire-and-forget.
+                                // Back off briefly if Android BLE queue is full.
+                                rxChar.setValue(chunk);
+                                rxChar.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
+                                boolean ok = gatt.writeCharacteristic(rxChar);
+                                if (!ok) {
+                                    Thread.sleep(5); // queue full — brief backoff
+                                }
                             }
                             offset += chunkLen;
                         }
@@ -695,7 +708,14 @@ public class rfcomm_conn_mgr {
                             m_nmea_accumulator.reset();
                             m_ardusimple_rx_characteristic = service.getCharacteristic(ardusimple_chrc_rx_uuid);
                             if (m_ardusimple_rx_characteristic != null) {
-                                log(TAG, "TX Characteristic found (Ardusimple NMEA mode) + RX for RTCM write, enabling notifications...");
+                                int rxProp = m_ardusimple_rx_characteristic.getProperties();
+                                // Prefer write-with-response (more reliable for RTCM — guaranteed delivery);
+                                // fall back to no-response only if PROPERTY_WRITE is absent.
+                                boolean supportsWriteWithResponse = (rxProp & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0;
+                                m_ble_rx_write_type = supportsWriteWithResponse
+                                        ? BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                                        : BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE;
+                                log(TAG, "TX Characteristic found (Ardusimple NMEA mode) + RX for RTCM write, rxProp: " + rxProp + " write type: " + m_ble_rx_write_type + ", enabling notifications...");
                             } else {
                                 log(TAG, "TX Characteristic found (Ardusimple NMEA mode), RX characteristic not found — RTCM write disabled");
                             }
@@ -743,7 +763,10 @@ public class rfcomm_conn_mgr {
                 if (status != BluetoothGatt.GATT_SUCCESS) {
                     log(TAG, "onCharacteristicWrite RTCM chunk failed status: " + status);
                 }
-                m_ble_write_semaphore.release();
+                // Only release for write-with-response; no-response writer releases immediately.
+                if (m_ble_rx_write_type == BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) {
+                    m_ble_write_semaphore.release();
+                }
             }
         }
 

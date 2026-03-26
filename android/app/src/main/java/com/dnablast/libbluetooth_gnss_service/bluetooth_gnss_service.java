@@ -712,8 +712,11 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     throw new Exception("invalid state - device name is null");
                 }
                 log(TAG, "using dev name:" + name);
-                m_ble_qstarz_mode = true;//name.startsWith("QSTARZ");
-                log(TAG, "m_ble_qstarz_mode:" + m_ble_qstarz_mode);
+                // Use BLE mode for LE-only or dual-mode devices; classic BT (e.g. SPP/RFCOMM modules) stays false
+                int devType = dev.getType();
+                m_ble_qstarz_mode = devType == BluetoothDevice.DEVICE_TYPE_LE
+                        || devType == BluetoothDevice.DEVICE_TYPE_DUAL;
+                log(TAG, "dev type: " + devType + " → m_ble_qstarz_mode: " + m_ble_qstarz_mode);
 
                 m_gnss_parser = new gnss_sentence_parser(); //use new instance
                 m_gnss_parser.set_callback(this);
@@ -964,8 +967,8 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                 }
         );
 
-        //try send some initial ubx queries to device:
-        if (m_ubx_mode && m_ubx_send_enable_extra_used_packets) {
+        //try send some initial ubx queries to device (RFCOMM/serial only — not BLE, to avoid flooding the BLE link):
+        if (m_ubx_mode && m_ubx_send_enable_extra_used_packets && !m_ble_qstarz_mode) {
             new Thread() {
                 public void run() {
                     try {
@@ -1403,6 +1406,9 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
 
     public void on_target_tcp_disconnected(){
         log(TAG, "on_target_tcp_disconnected()");
+        // Reset cooldown so the next incoming GGA immediately triggers a reconnect attempt.
+        last_ntrip_connect_retry = 0;
+        m_ntrip_conn_mgr = null;
     }
 
     @Override
