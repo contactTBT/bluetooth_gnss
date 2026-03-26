@@ -712,11 +712,6 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     throw new Exception("invalid state - device name is null");
                 }
                 log(TAG, "using dev name:" + name);
-                // Use BLE mode for LE-only or dual-mode devices; classic BT (e.g. SPP/RFCOMM modules) stays false
-                int devType = dev.getType();
-                m_ble_qstarz_mode = devType == BluetoothDevice.DEVICE_TYPE_LE
-                        || devType == BluetoothDevice.DEVICE_TYPE_DUAL;
-                log(TAG, "dev type: " + devType + " → m_ble_qstarz_mode: " + m_ble_qstarz_mode);
 
                 m_gnss_parser = new gnss_sentence_parser(); //use new instance
                 m_gnss_parser.set_callback(this);
@@ -733,9 +728,13 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                 if (dev == null) {
                     toast("Please pair your Bluetooth GPS Receiver in phone Bluetooth Settings...");
                     throw new Exception("no paired bluetooth devices...");
-                } else {
-                    //ok
                 }
+                // Only use RFCOMM for confirmed classic-BT devices (e.g. SPP modules on raw ZED-F9P).
+                // BLE, dual-mode, and unknown devices all use the BLE/GATT path.
+                int devType = dev.getType();
+                m_ble_qstarz_mode = (devType != BluetoothDevice.DEVICE_TYPE_CLASSIC);
+                log(TAG, "dev type: " + devType + " → m_ble_qstarz_mode: " + m_ble_qstarz_mode);
+
                 g_rfcomm_mgr = new rfcomm_conn_mgr(dev, secure, this, context, m_ble_qstarz_mode);
 
                 start_connecting_thread();
@@ -1407,8 +1406,9 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     public void on_target_tcp_disconnected(){
         log(TAG, "on_target_tcp_disconnected()");
         // Reset cooldown so the next incoming GGA immediately triggers a reconnect attempt.
+        // Do NOT null m_ntrip_conn_mgr here — races with on_readline's send_buff_to_server call.
+        // connect_ntrip() will close and replace it safely.
         last_ntrip_connect_retry = 0;
-        m_ntrip_conn_mgr = null;
     }
 
     @Override
