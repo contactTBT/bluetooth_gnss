@@ -556,7 +556,7 @@ public class rfcomm_conn_mgr {
         m_ble_writer_thread = new Thread() {
             public void run() {
                 log(TAG, "ble_rtcm_writer_thread start");
-                final int WRITE_ACK_TIMEOUT_MS = 300;
+                final int WRITE_ACK_TIMEOUT_MS = 1000; // 300ms was too tight; Ardusimple can ACK in 400–600ms
                 while (!closed && m_ble_writer_thread == this) {
                     try {
                         byte[] payload = m_outgoing_buffers.poll();
@@ -658,7 +658,18 @@ public class rfcomm_conn_mgr {
     private void connect_ble(BluetoothDevice device) throws Exception {
         close_gatt();
         ble_connecting_latch = new CountDownLatch(1);
-        bluetoothGatt = device.connectGatt(m_context, false, gattCallback);
+        // Transport selection:
+        //   DEVICE_TYPE_CLASSIC → TRANSPORT_LE: the pairing cache says CLASSIC so TRANSPORT_AUTO
+        //     would pick CLASSIC transport and fail immediately. Force LE to reach the BLE radio.
+        //   DEVICE_TYPE_LE / DUAL / UNKNOWN → TRANSPORT_AUTO: the pairing entry already describes
+        //     a BLE device; TRANSPORT_AUTO uses the stored bond keys correctly. Forcing TRANSPORT_LE
+        //     here can trigger LTK mismatch (status 133) if the bond is freshly created.
+        int devType = device.getType();
+        int transport = (devType == BluetoothDevice.DEVICE_TYPE_CLASSIC)
+                ? BluetoothDevice.TRANSPORT_LE
+                : BluetoothDevice.TRANSPORT_AUTO;
+        log(TAG, "connect_ble: devType=" + devType + " → transport=" + transport);
+        bluetoothGatt = device.connectGatt(m_context, false, gattCallback, transport);
         boolean success = ble_connecting_latch.await(CONNECT_BLE_TIMEOUT_SECS, TimeUnit.SECONDS);
         if (!success) {
             // Latch timed out — device never advertised BLE or never responded.
