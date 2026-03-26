@@ -136,8 +136,9 @@ public class usb_conn_mgr implements Closeable {
             flags |= PendingIntent.FLAG_MUTABLE;
         }
 
+        // Android 14+: FLAG_MUTABLE with implicit intent is forbidden. Make explicit with setPackage().
         PendingIntent permissionIntent = PendingIntent.getBroadcast(
-                m_context, 0, new Intent(ACTION_USB_PERMISSION), flags);
+                m_context, 0, new Intent(ACTION_USB_PERMISSION).setPackage(m_context.getPackageName()), flags);
 
         Log.d(TAG, "Requesting USB permission for device: " + device.getDeviceName());
         m_usb_manager.requestPermission(device, permissionIntent);

@@ -729,11 +729,12 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     toast("Please pair your Bluetooth GPS Receiver in phone Bluetooth Settings...");
                     throw new Exception("no paired bluetooth devices...");
                 }
-                // Only use RFCOMM for confirmed classic-BT devices (e.g. SPP modules on raw ZED-F9P).
-                // BLE, dual-mode, and unknown devices all use the BLE/GATT path.
+                // Always try BLE/GATT first. Android delivers STATE_DISCONNECTED quickly (~1–2 s) for
+                // classic-only devices (e.g. ZED-F9P SPP), which triggers the RFCOMM fallback in
+                // start_connecting_thread(). BLE-capable devices (Smart Antenna) connect directly.
                 int devType = dev.getType();
-                m_ble_qstarz_mode = (devType != BluetoothDevice.DEVICE_TYPE_CLASSIC);
-                log(TAG, "dev type: " + devType + " → m_ble_qstarz_mode: " + m_ble_qstarz_mode);
+                m_ble_qstarz_mode = true;
+                log(TAG, "dev type: " + devType + " → m_ble_qstarz_mode: " + m_ble_qstarz_mode + " (BLE-first for all devices)");
 
                 g_rfcomm_mgr = new rfcomm_conn_mgr(dev, secure, this, context, m_ble_qstarz_mode);
 
@@ -966,8 +967,10 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                 }
         );
 
-        //try send some initial ubx queries to device (RFCOMM/serial only — not BLE, to avoid flooding the BLE link):
-        if (m_ubx_mode && m_ubx_send_enable_extra_used_packets && !m_ble_qstarz_mode) {
+        // Send UBX init commands to: (a) RFCOMM classic BT, or (b) Ardusimple BLE (NUS passes UBX through to ZED-F9P UART).
+        // Skip for Qstarz binary BLE mode (m_ble_qstarz_mode=true but not Ardusimple).
+        if (m_ubx_mode && m_ubx_send_enable_extra_used_packets &&
+                (!m_ble_qstarz_mode || (g_rfcomm_mgr != null && g_rfcomm_mgr.m_is_ardusimple_nmea_mode))) {
             new Thread() {
                 public void run() {
                     try {
