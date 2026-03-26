@@ -1166,18 +1166,66 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     log(TAG, "rfcomm connect to dev");
                     g_rfcomm_mgr.connect();
                 } catch (final Exception e) {
-                    broadcastDisconnect("Connect failed: " + e.toString());
-                    m_handler.post(
-                            new Runnable() {
-                                @Override
-                                public void run() {
-                                    String emsg = "Connect failed: "+e.toString();
-                                    toast(emsg);
-                                    updateNotification("Connect failed: "+ getStackTraceString(e), "Target device: "+m_bdaddr, emsg);
+                    if ("ble_nus_not_found".equals(e.getMessage())) {
+                        // BLE connected but no Nordic UART Service found — device is classic BT only.
+                        // Retry with RFCOMM (SPP) using the same bdaddr.
+                        log(TAG, "BLE NUS not found on " + m_bdaddr + " — retrying via RFCOMM");
+                        m_ble_qstarz_mode = false;
+                        try {
+                            BluetoothDevice rfcommDev = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(m_bdaddr);
+                            g_rfcomm_mgr = new rfcomm_conn_mgr(rfcommDev, m_secure_rfcomm, bluetooth_gnss_service.this, getApplicationContext(), false);
+                            g_rfcomm_mgr.connect();
+                        } catch (final Exception rfcommEx) {
+                            broadcastDisconnect("Connect failed: " + rfcommEx.toString());
+                            m_handler.post(
+                                    new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            String emsg = "Connect failed: " + rfcommEx.toString();
+                                            toast(emsg);
+                                            updateNotification("Connect failed: " + getStackTraceString(rfcommEx), "Target device: " + m_bdaddr, emsg);
+                                        }
+                                    }
+                            );
+                            log(TAG, "rfcomm fallback connect exception: " + getStackTraceString(rfcommEx));
+                        }
+                    } else if (!m_ble_qstarz_mode) {
+                        // RFCOMM-first device (e.g. classic BT) failed — try BLE as fallback.
+                        // Handles Smart Antenna in BLE mode that Android paired as CLASSIC.
+                        log(TAG, "RFCOMM failed for " + m_bdaddr + " — retrying via BLE: " + e.getMessage());
+                        m_ble_qstarz_mode = true;
+                        try {
+                            BluetoothDevice bleDev = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(m_bdaddr);
+                            g_rfcomm_mgr = new rfcomm_conn_mgr(bleDev, m_secure_rfcomm, bluetooth_gnss_service.this, getApplicationContext(), true);
+                            g_rfcomm_mgr.connect();
+                        } catch (final Exception bleEx) {
+                            broadcastDisconnect("Connect failed: " + bleEx.toString());
+                            m_handler.post(
+                                    new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            String emsg = "Connect failed: " + bleEx.toString();
+                                            toast(emsg);
+                                            updateNotification("Connect failed: " + getStackTraceString(bleEx), "Target device: " + m_bdaddr, emsg);
+                                        }
+                                    }
+                            );
+                            log(TAG, "ble fallback connect exception: " + getStackTraceString(bleEx));
+                        }
+                    } else {
+                        broadcastDisconnect("Connect failed: " + e.toString());
+                        m_handler.post(
+                                new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        String emsg = "Connect failed: "+e.toString();
+                                        toast(emsg);
+                                        updateNotification("Connect failed: "+ getStackTraceString(e), "Target device: "+m_bdaddr, emsg);
+                                    }
                                 }
-                            }
-                    );
-                    log(TAG, "g_rfcomm_mgr connect exception: "+ getStackTraceString(e));
+                        );
+                        log(TAG, "g_rfcomm_mgr connect exception: "+ getStackTraceString(e));
+                    }
                 }
             }
         };

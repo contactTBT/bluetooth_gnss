@@ -232,6 +232,10 @@ public class rfcomm_conn_mgr {
 
             if (m_ble_mode) {
                 connect_ble(m_target_bt_server_dev);
+                // If BLE failed (NUS not found, latch timeout, or GATT disconnected before services):
+                if (m_ble_nus_not_found || closed) {
+                    throw new Exception("ble_nus_not_found");
+                }
             } else {
                 m_bluetooth_socket = null;
                 try {
@@ -505,6 +509,8 @@ public class rfcomm_conn_mgr {
     private int m_ble_rx_write_type = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE;
     // Negotiated BLE payload size (MTU - 3 ATT header bytes). Default 20 until onMtuChanged fires.
     private volatile int m_ble_payload_size = 20;
+    // Set when BLE connects but no Nordic UART Service is found; triggers RFCOMM fallback in connect().
+    public volatile boolean m_ble_nus_not_found = false;
     // Max RTCM payloads in outgoing queue; older entries are dropped when exceeded (RTCM is time-sensitive)
     private static final int BLE_OUTGOING_QUEUE_MAX_SIZE = 100;
     private BluetoothGatt bluetoothGatt;
@@ -655,8 +661,10 @@ public class rfcomm_conn_mgr {
         bluetoothGatt = device.connectGatt(m_context, false, gattCallback);
         boolean success = ble_connecting_latch.await(CONNECT_BLE_TIMEOUT_SECS, TimeUnit.SECONDS);
         if (!success) {
-            log(TAG, "connect gatt timed-out");
+            // Latch timed out — device never advertised BLE or never responded.
+            log(TAG, "connect gatt timed-out — flagging for RFCOMM fallback");
             close_gatt();
+            m_ble_nus_not_found = true;
         } else {
             log(TAG, "connect gatt completed");
         }
@@ -731,6 +739,11 @@ public class rfcomm_conn_mgr {
                         log(TAG, "No known TX Characteristic found in Nordic UART Service — closing");
                         close_gatt();
                     }
+                } else {
+                    // Nordic UART Service not found — device may be classic BT only (SPP).
+                    // Set flag so connect() can throw and let bluetooth_gnss_service retry via RFCOMM.
+                    log(TAG, "Nordic UART Service not found — flagging for RFCOMM fallback");
+                    m_ble_nus_not_found = true;
                 }
             } else {
                 //connect gatt failed - set to null
