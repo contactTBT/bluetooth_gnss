@@ -158,6 +158,8 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     boolean m_ble_qstarz_mode = false;
     OutputStream m_log_bt_rx_fos = null;
     OutputStream m_log_bt_rx_csv_fos = null;
+    OutputStream m_fix_status_log_fos = null;
+    String m_last_logged_fix_quality = null;
     long log_bt_rx_bytes_written = 0;
     public static bluetooth_gnss_service curInstance = null;
     boolean mock_location_timestamp_use_system_time = false;
@@ -346,6 +348,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
             if (System.currentTimeMillis() - last_ntrip_connect_retry > 10000) {
                 if (m_all_ntrip_params_specified) {
                     log(TAG, "start_ntrip_conn_if_specified call connect_ntrip() since m_all_ntrip_params_specified true");
+                    log_fix_event("ntrip_reconnect_attempt", "fix:" + (m_last_logged_fix_quality != null ? m_last_logged_fix_quality : "(none)"));
                     int port = -1;
                     try {
                         port = Integer.parseInt((String) m_start_connect_args.get(NTRIP_ARG_PORT));
@@ -922,6 +925,12 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                 m_log_operations_fos = null;
             }
         } catch (Exception e) {}
+        try {
+            if (m_fix_status_log_fos != null) {
+                m_fix_status_log_fos.close();
+                m_fix_status_log_fos = null;
+            }
+        } catch (Exception e) {}
         log_file_uri = null;
 
         return was_connected;
@@ -965,6 +974,7 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     {
         log(TAG, "on_rfcomm_connected()");
         m_connection_type = m_ble_qstarz_mode ? ConnectionType.BLUETOOTH_BLE : ConnectionType.BLUETOOTH_RFCOMM;
+        log_fix_event("connected", (m_ble_qstarz_mode ? "BLE" : "RFCOMM") + "  device:" + m_bdaddr);
         m_handler.post(
                 new Runnable() {
                     @Override
@@ -1302,6 +1312,18 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
         }
     }
 
+    /** Write a timestamped line to the fix-status log file. No-op if logging not enabled. */
+    private void log_fix_event(String event, String detail) {
+        if (m_fix_status_log_fos == null) return;
+        try {
+            String line = csv_sdf.format(new Date()) + "\t" + event + "\t" + detail + "\n";
+            m_fix_status_log_fos.write(line.getBytes("UTF-8"));
+            m_fix_status_log_fos.flush();
+        } catch (Throwable tr) {
+            log(TAG, "log_fix_event exception: " + getStackTraceString(tr));
+        }
+    }
+
     public static void log(String msg)
     {
         log(TAG, msg);
@@ -1383,9 +1405,11 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                 throw new Exception("Failed to access folder");
             }
 
-            DocumentFile df = create_new_file(getApplicationContext(), log_folder_uri_str, "text/plain", (log_name_sdf.format(new Date()) + "_rx_log.txt"));
-            DocumentFile df_csv = create_new_file(getApplicationContext(), log_folder_uri_str, "text/csv", (log_name_sdf.format(new Date()) + "_location_log.csv"));
-            DocumentFile lf = create_new_file(getApplicationContext(), log_folder_uri_str, "text/plain", (log_name_sdf.format(new Date()) + "_operations_log.txt"));
+            String ts_prefix = log_name_sdf.format(new Date());
+            DocumentFile df = create_new_file(getApplicationContext(), log_folder_uri_str, "text/plain", (ts_prefix + "_rx_log.txt"));
+            DocumentFile df_csv = create_new_file(getApplicationContext(), log_folder_uri_str, "text/csv", (ts_prefix + "_location_log.csv"));
+            DocumentFile lf = create_new_file(getApplicationContext(), log_folder_uri_str, "text/plain", (ts_prefix + "_operations_log.txt"));
+            DocumentFile lf_fix = create_new_file(getApplicationContext(), log_folder_uri_str, "text/plain", (ts_prefix + "_fix_status_log.txt"));
             if (df == null) {
                 throw new Exception("Failed to create file in folder");
             }
@@ -1395,8 +1419,12 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
             m_log_bt_rx_fos = get_df_os(df);
             m_log_bt_rx_csv_fos = get_df_os(df_csv);
             m_log_operations_fos = get_df_os(lf);
+            m_fix_status_log_fos = get_df_os(lf_fix);
+            m_last_logged_fix_quality = null;
             m_log_bt_rx_csv_fos.write("time,lat,lon,alt\n".getBytes());
             m_log_bt_rx_csv_fos.flush();
+            m_fix_status_log_fos.write("timestamp\tevent\tdetail\n".getBytes("UTF-8"));
+            m_fix_status_log_fos.flush();
             log(TAG, "log_bt_rx: m_log_bt_rx_fos ready");
         } catch (Throwable tr) {
             String msg = "WARNING: Logging failed - pls re-tick 'Settings' > 'Enable logging' - error:\n"+ getStackTraceString(tr);
@@ -1423,13 +1451,11 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     start_ntrip_conn_if_specified_but_not_connected();
                 }
                 if (m_send_gga_to_ntrip && is_ntrip_connected()) {
-                    log(TAG, "consider send gga to ntrip if not sent since millis: " + SEND_GGA_TO_NTRIP_EVERY_MILLIS);
                     long now = System.currentTimeMillis();
                     if (now >= m_last_ntrip_gga_send_ts) {
                         if (now - m_last_ntrip_gga_send_ts > SEND_GGA_TO_NTRIP_EVERY_MILLIS) {
                             m_last_ntrip_gga_send_ts = now;
                             String send_str = (parsed_nmea.get("contents")) + "\r\n";
-                            log(TAG, "yes send to ntrip now: "+send_str);
                             m_ntrip_conn_mgr.send_buff_to_server(send_str.getBytes("ascii"));
                         }
                     } else {
@@ -1497,10 +1523,13 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
     public void on_target_tcp_connected() {
         log(TAG, "on_target_tcp_connected()");
         m_last_ntrip_gga_send_ts = 0;
+        log_fix_event("ntrip_connected", "fix:" + (m_last_logged_fix_quality != null ? m_last_logged_fix_quality : "(none)"));
     }
 
     public void on_target_tcp_disconnected(){
         log(TAG, "on_target_tcp_disconnected()");
+        log_fix_event("ntrip_dropped", "fix:" + (m_last_logged_fix_quality != null ? m_last_logged_fix_quality : "(none)")
+                + "  rtcm_packets:" + m_ntrip_cb_count);
         // Reset cooldown so the next incoming GGA immediately triggers a reconnect attempt.
         // Do NOT null m_ntrip_conn_mgr here — races with on_readline's send_buff_to_server call.
         // connect_ntrip() will close and replace it safely.
@@ -1799,6 +1828,13 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
         /// /////////////////
 
 
+        // Log fix quality changes to the dedicated fix-status log file.
+        if (fix_quality != null && !fix_quality.equals(m_last_logged_fix_quality)) {
+            String from = m_last_logged_fix_quality != null ? m_last_logged_fix_quality : "(none)";
+            log_fix_event("fix_change", from + " → " + fix_quality);
+            m_last_logged_fix_quality = fix_quality;
+        }
+
         long intent_pos_broadcast_ts = System.currentTimeMillis();
         try {
             Intent intent = new Intent();
@@ -1888,6 +1924,9 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
             log(TAG, "broadcastDisconnect: already sent, skipping");
             return;
         }
+        String fix_at_disconnect = m_last_logged_fix_quality != null ? m_last_logged_fix_quality : "(none)";
+        log_fix_event("disconnected", fix_at_disconnect + " → Invalid  [" + reason + "]");
+        m_last_logged_fix_quality = null;
         try {
             Intent intent = new Intent();
             intent.setAction(POSITION_UPDATE_INTENT_ACTION);

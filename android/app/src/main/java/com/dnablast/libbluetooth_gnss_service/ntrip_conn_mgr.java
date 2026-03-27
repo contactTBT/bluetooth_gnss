@@ -304,19 +304,9 @@ public class ntrip_conn_mgr {
 
     public boolean is_connected()
     {
-        if (closed) {
-            return false;
-        }
-        Log.d(TAG, "is_connected() m_conn_state_watcher: "+m_conn_state_watcher);
-        Log.d(TAG, "is_connected() m_tcp_server_sock: "+m_tcp_server_sock);
-        if (m_tcp_server_sock != null) {
-            Log.d(TAG, "is_connected() m_tcp_server_sock.isConnected(): "+m_tcp_server_sock.isConnected());
-        }
-        if (m_conn_state_watcher != null) {
-            Log.d(TAG, "is_connected() m_conn_state_watcher.isAlive(): "+m_conn_state_watcher.isAlive());
-        }
-        //return (m_conn_state_watcher != null && m_conn_state_watcher.isAlive() && m_tcp_server_sock != null && m_tcp_server_sock.isConnected());
-        return (m_tcp_server_sock != null && m_tcp_server_sock.isConnected() && m_conn_state_watcher != null && m_conn_state_watcher.isAlive());
+        if (closed) return false;
+        return (m_tcp_server_sock != null && m_tcp_server_sock.isConnected()
+                && m_conn_state_watcher != null && m_conn_state_watcher.isAlive());
     }
 
 
