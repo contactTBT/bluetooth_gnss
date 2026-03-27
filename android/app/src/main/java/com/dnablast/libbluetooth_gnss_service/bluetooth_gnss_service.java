@@ -732,12 +732,17 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     toast("Please pair your Bluetooth GPS Receiver in phone Bluetooth Settings...");
                     throw new Exception("no paired bluetooth devices...");
                 }
-                // Always try BLE/GATT first. Android delivers STATE_DISCONNECTED quickly (~1–2 s) for
-                // classic-only devices (e.g. ZED-F9P SPP), which triggers the RFCOMM fallback in
-                // start_connecting_thread(). BLE-capable devices (Smart Antenna) connect directly.
-                int devType = dev.getType();
-                m_ble_qstarz_mode = true;
-                log(TAG, "dev type: " + devType + " → m_ble_qstarz_mode: " + m_ble_qstarz_mode + " (BLE-first for all devices)");
+                // Use BLE only for known BLE-only models identified by device name.
+                // Device-type detection is unreliable: Android caches the type from the original
+                // pairing, so a device re-paired in Classic mode still reports DEVICE_TYPE_LE,
+                // causing a wasted 5-15 s BLE timeout before RFCOMM fallback.
+                // Known BLE models:
+                //   "SmartAnt…" — Ardusimple Smart Antenna (Nordic UART Service / NUS)
+                //   "QSTARZ…"  — Qstarz BLE tracker (proprietary BLE protocol)
+                // Everything else (raw ZED-F9P, u-blox modules, generic SPP…) → RFCOMM directly.
+                String devName = dev.getName() != null ? dev.getName() : "";
+                m_ble_qstarz_mode = devName.startsWith("QSTARZ");//devName.startsWith("SmartAnt") || 
+                log(TAG, "dev name: \"" + devName + "\" → m_ble_qstarz_mode: " + m_ble_qstarz_mode);
 
                 g_rfcomm_mgr = new rfcomm_conn_mgr(dev, secure, this, context, m_ble_qstarz_mode);
 
@@ -970,6 +975,9 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                 }
         );
 
+        // Start NTRIP immediately on connect without waiting ~1 s for the first GGA sentence.
+        start_ntrip_conn_if_specified_but_not_connected();
+
         // Send UBX init commands to: (a) RFCOMM classic BT, or (b) Ardusimple BLE (NUS passes UBX through to ZED-F9P UART).
         // Skip for Qstarz binary BLE mode (m_ble_qstarz_mode=true but not Ardusimple).
         if (m_ubx_mode && m_ubx_send_enable_extra_used_packets &&
@@ -1187,8 +1195,12 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                     if ("ble_nus_not_found".equals(e.getMessage())) {
                         // BLE connected but no Nordic UART Service found — device is classic BT only.
                         // Retry with RFCOMM (SPP) using the same bdaddr.
+                        // Brief pause: after GATT close the device's BT stack needs ~1 s to be
+                        // ready to accept a new RFCOMM connection; without it connect() fails
+                        // immediately with "read failed, read ret: -1".
                         log(TAG, "BLE NUS not found on " + m_bdaddr + " — retrying via RFCOMM");
                         m_ble_qstarz_mode = false;
+                        try { Thread.sleep(1200); } catch (InterruptedException ignored) {}
                         try {
                             BluetoothDevice rfcommDev = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(m_bdaddr);
                             g_rfcomm_mgr = new rfcomm_conn_mgr(rfcommDev, m_secure_rfcomm, bluetooth_gnss_service.this, getApplicationContext(), false);
@@ -1208,27 +1220,45 @@ public class bluetooth_gnss_service extends Service implements rfcomm_conn_callb
                             log(TAG, "rfcomm fallback connect exception: " + getStackTraceString(rfcommEx));
                         }
                     } else if (!m_ble_qstarz_mode) {
-                        // RFCOMM-first device (e.g. classic BT) failed — try BLE as fallback.
-                        // Handles Smart Antenna in BLE mode that Android paired as CLASSIC.
-                        log(TAG, "RFCOMM failed for " + m_bdaddr + " — retrying via BLE: " + e.getMessage());
-                        m_ble_qstarz_mode = true;
-                        try {
-                            BluetoothDevice bleDev = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(m_bdaddr);
-                            g_rfcomm_mgr = new rfcomm_conn_mgr(bleDev, m_secure_rfcomm, bluetooth_gnss_service.this, getApplicationContext(), true);
-                            g_rfcomm_mgr.connect();
-                        } catch (final Exception bleEx) {
-                            broadcastDisconnect("Connect failed: " + bleEx.toString());
+                        // RFCOMM-first device failed — try BLE only if not Classic-only.
+                        // Classic-only devices have no BLE advertisement; connectGatt() blocks
+                        // for ~7 s before STATE_DISCONNECTED fires, causing a visible UI glitch.
+                        BluetoothDevice fb_dev = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(m_bdaddr);
+                        boolean isClassicOnly = (fb_dev != null && fb_dev.getType() == BluetoothDevice.DEVICE_TYPE_CLASSIC);
+                        if (!isClassicOnly) {
+                            log(TAG, "RFCOMM failed for " + m_bdaddr + " — retrying via BLE: " + e.getMessage());
+                            m_ble_qstarz_mode = true;
+                            try {
+                                g_rfcomm_mgr = new rfcomm_conn_mgr(fb_dev, m_secure_rfcomm, bluetooth_gnss_service.this, getApplicationContext(), true);
+                                g_rfcomm_mgr.connect();
+                            } catch (final Exception bleEx) {
+                                broadcastDisconnect("Connect failed: " + bleEx.toString());
+                                m_handler.post(
+                                        new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                String emsg = "Connect failed: " + bleEx.toString();
+                                                toast(emsg);
+                                                updateNotification("Connect failed: " + getStackTraceString(bleEx), "Target device: " + m_bdaddr, emsg);
+                                            }
+                                        }
+                                );
+                                log(TAG, "ble fallback connect exception: " + getStackTraceString(bleEx));
+                            }
+                        } else {
+                            // Classic-only: skip BLE fallback, fail fast for auto-reconnect.
+                            log(TAG, "RFCOMM failed for Classic device — skip BLE fallback: " + e.getMessage());
+                            broadcastDisconnect("Connect failed: " + e.toString());
                             m_handler.post(
                                     new Runnable() {
                                         @Override
                                         public void run() {
-                                            String emsg = "Connect failed: " + bleEx.toString();
+                                            String emsg = "Connect failed: " + e.toString();
                                             toast(emsg);
-                                            updateNotification("Connect failed: " + getStackTraceString(bleEx), "Target device: " + m_bdaddr, emsg);
+                                            updateNotification("Connect failed: " + getStackTraceString(e), "Target device: " + m_bdaddr, emsg);
                                         }
                                     }
                             );
-                            log(TAG, "ble fallback connect exception: " + getStackTraceString(bleEx));
                         }
                     } else {
                         broadcastDisconnect("Connect failed: " + e.toString());

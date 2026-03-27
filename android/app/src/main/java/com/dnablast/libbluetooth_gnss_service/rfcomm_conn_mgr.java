@@ -654,10 +654,11 @@ public class rfcomm_conn_mgr {
     }
 
     CountDownLatch ble_connecting_latch;
-    final int CONNECT_BLE_TIMEOUT_SECS = 15;
+    final int CONNECT_BLE_TIMEOUT_SECS = 5; // 5 s is enough for BLE (connects in 2-3 s); 15 s was too long when a Classic-mode device never advertises BLE
     private void connect_ble(BluetoothDevice device) throws Exception {
         close_gatt();
         ble_connecting_latch = new CountDownLatch(1);
+
         // Transport selection:
         //   DEVICE_TYPE_CLASSIC → TRANSPORT_LE: the pairing cache says CLASSIC so TRANSPORT_AUTO
         //     would pick CLASSIC transport and fail immediately. Force LE to reach the BLE radio.
